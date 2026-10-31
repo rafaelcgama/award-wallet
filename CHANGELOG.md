@@ -4,6 +4,8 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-31
+
 ### Added
 - One-click updates: the app checks for a new version on launch, then downloads it, replaces
   itself and reopens.
