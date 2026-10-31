@@ -25,6 +25,8 @@ DATABASE_FILE = "award_wallet.db"
 # Logs and failed-fetch screenshots: safe to send for troubleshooting, unlike the keys and
 # database next to it.
 DIAGNOSTICS_DIR = "Diagnostics"
+# Each program's Chrome profile, which keeps its sign-in.
+BROWSER_DIR = "Browser"
 LOG_FILE = "award-wallet.log"
 
 
@@ -43,6 +45,7 @@ def desktop_settings(directory: Path, token: str) -> Settings:
         _env_file=keys_file,
         database_url=f"sqlite:///{directory / DATABASE_FILE}",
         auto_fetch=True,
+        browser_dir=directory / BROWSER_DIR,
         screenshots_dir=directory / DIAGNOSTICS_DIR / "screenshots",
         desktop_token=token,
     )
@@ -139,12 +142,16 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.check_browser:
+        import tempfile
+
         from award_wallet.fetching import browser_launcher
 
-        playwright, browser = browser_launcher(headless=True)
-        print(f"Chrome {browser.version} is ready", flush=True)
-        browser.close()
-        playwright.stop()
+        with tempfile.TemporaryDirectory() as profile:
+            playwright, context = browser_launcher(Path(profile), headless=True)
+            page = context.pages[0] if context.pages else context.new_page()
+            print(f"Chrome is ready: {page.evaluate('navigator.userAgent')}", flush=True)
+            context.close()
+            playwright.stop()
         return
 
     start_logging(data_dir())

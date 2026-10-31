@@ -88,13 +88,22 @@ def update_login(
     form: PostedForm,
 ):
     account = accounts.get_account(db, user.id, account_id)
-    credentials = _posted_credentials(form, get_provider(account.provider))
+    provider = get_provider(account.provider)
+    credentials = _posted_credentials(form, provider)
+    before = accounts.read_credentials(vault, account) or {}
     try:
         if not any(credentials.values()):
             raise InvalidInput("Fill in the login fields to save a new login.")
         accounts.update_credentials(db, vault, account, credentials)
     except InvalidInput as exc:
         return _render_account(request, db, user, account, status_code=400, login_error=str(exc))
+    # A new password keeps Chrome's memory of this Mac; someone else's login starts fresh.
+    if any(
+        before.get(field.name) != credentials.get(field.name)
+        for field in provider.credential_fields
+        if not field.secret
+    ):
+        request.app.state.refresher.forget_browser(account.id)
     flash(request, "Login saved.")
     _start_sign_in(request, account)
     return RedirectResponse(f"/accounts/{account.id}", status_code=303)
@@ -126,6 +135,7 @@ def _start_sign_in(request: Request, account: LoyaltyAccount) -> None:
 def remove_login(request: Request, db: DbSession, user: CurrentUser, account_id: str):
     account = accounts.get_account(db, user.id, account_id)
     accounts.remove_credentials(db, account)
+    request.app.state.refresher.forget_browser(account.id)
     flash(request, "Login removed. You can keep entering this balance by hand.")
     return RedirectResponse(f"/accounts/{account.id}", status_code=303)
 
@@ -135,6 +145,7 @@ def delete_account(request: Request, db: DbSession, user: CurrentUser, account_i
     account = accounts.get_account(db, user.id, account_id)
     label = account.label
     accounts.delete_account(db, account)
+    request.app.state.refresher.forget_browser(account_id)
     flash(request, f"Removed {label}.")
     return RedirectResponse("/", status_code=303)
 

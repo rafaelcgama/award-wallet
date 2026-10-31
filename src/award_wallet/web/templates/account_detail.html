@@ -102,7 +102,7 @@
     <summary>Enter a balance by hand</summary>
     {{ manual_form() }}
   </details>
-  <details class="manual"{% if login_error %} open{% endif %}>
+  <details class="manual"{% if login_error or account.sync_status == "login_rejected" %} open{% endif %}>
     <summary>Change saved login</summary>
     <p class="muted small">Your {{ provider.name }} login is saved and encrypted. Enter new details to replace it.</p>
     {{ login_form() }}
