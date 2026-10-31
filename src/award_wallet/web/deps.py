@@ -17,7 +17,7 @@ SESSION_USER_KEY = "user_id"
 
 
 class LoginRequired(Exception):
-    pass
+    """The request didn't come from the app's own window."""
 
 
 def get_db(request: Request) -> Iterator[Session]:
@@ -40,8 +40,7 @@ def get_current_user(request: Request, db: Annotated[Session, Depends(get_db)]) 
         user = users.owner(db)
         request.session[SESSION_USER_KEY] = user.id
     if user is None:
-        # Forget a user that no longer exists (say, after the database was reset), otherwise
-        # the sign-in page would keep sending you back here.
+        # Forget a user that no longer exists (say, after the database was reset).
         request.session.pop(SESSION_USER_KEY, None)
         raise LoginRequired()
     return user
@@ -49,7 +48,7 @@ def get_current_user(request: Request, db: Annotated[Session, Depends(get_db)]) 
 
 def _opened_by_desktop_app(request: Request) -> bool:
     settings = request.app.state.settings
-    if not (settings.single_user and settings.desktop_token):
+    if not settings.desktop_token:
         return False
     expected = settings.desktop_token.get_secret_value()
     return hmac.compare_digest(request.query_params.get("token", ""), expected)

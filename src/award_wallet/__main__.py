@@ -1,3 +1,3 @@
-from award_wallet.cli import main
+from award_wallet.desktop import main
 
 main()

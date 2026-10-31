@@ -4,6 +4,19 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-31
+
+### Changed
+- All programs refresh at the same time, so balances arrive sooner when the app opens.
+- Award Wallet is now only a Mac app for one person: the sign-up and sign-in pages, password
+  hashing, the Terminal web server and its settings are gone. Fewer parts, fewer things to break.
+- No open-source license: the code is public to read, but all rights are reserved.
+
+### Added
+- A log file and failed-fetch screenshots in a Diagnostics folder; **Help → Show Diagnostics in
+  Finder** opens it.
+- If the app can't start, it says so in a window instead of quietly not opening.
+
 ## [0.3.1] - 2026-10-31
 
 ### Added

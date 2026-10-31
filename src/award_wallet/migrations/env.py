@@ -11,11 +11,9 @@ target_metadata = Base.metadata
 
 def _database_url() -> str:
     url = config.get_main_option("sqlalchemy.url")
-    if url:
-        return url
-    from award_wallet.config import get_settings
-
-    return get_settings().database_url
+    if not url:
+        raise RuntimeError("Set sqlalchemy.url (alembic.ini does, for development).")
+    return url
 
 
 def run_migrations_offline() -> None:

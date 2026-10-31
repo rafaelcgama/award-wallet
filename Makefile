@@ -1,6 +1,6 @@
 # Shortcuts for working on Award Wallet. Run `make` to list them.
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format check run app dmg clean
+.PHONY: help setup test lint format check app dmg clean
 
 help: ## List the commands
 	@grep -E "^[a-z]+:.*## " $(MAKEFILE_LIST) | awk -F ":.*## " '{printf "  make %-8s %s\n", $$1, $$2}'
@@ -21,10 +21,7 @@ format: ## Fix formatting and import order
 
 check: lint test ## Everything CI runs
 
-run: ## Run the web version at http://127.0.0.1:8000 with auto-reload
-	uv run uvicorn award_wallet.web:create_app --factory --reload --port 8000
-
-app: ## Open the app window straight from the code, without building
+app: ## Run the app from this branch's code, without installing it
 	uv run --extra desktop python -m award_wallet.desktop
 
 dmg: ## Build build/Award Wallet.dmg

@@ -15,7 +15,7 @@ class _window:
     """The app window, already signed in with its launch token."""
 
     def __init__(self, settings):
-        desktop = settings.model_copy(update={"single_user": True, "desktop_token": SecretStr("t")})
+        desktop = settings.model_copy(update={"desktop_token": SecretStr("t")})
         self.client = TestClient(create_app(desktop), base_url="http://127.0.0.1")
 
     def __enter__(self):

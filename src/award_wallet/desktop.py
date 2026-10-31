@@ -4,8 +4,11 @@ Data and keys live in ~/Library/Application Support/Award Wallet, the usual plac
 """
 
 import argparse
+import logging
+import logging.handlers
 import secrets
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -13,12 +16,16 @@ from pathlib import Path
 
 import uvicorn
 
-from award_wallet.cli import write_env_file
-from award_wallet.config import Settings
+from award_wallet import __version__
+from award_wallet.config import Settings, create_keys_file
 
 APP_NAME = "Award Wallet"
 KEYS_FILE = "settings.env"
 DATABASE_FILE = "award_wallet.db"
+# Logs and failed-fetch screenshots: safe to send for troubleshooting, unlike the keys and
+# database next to it.
+DIAGNOSTICS_DIR = "Diagnostics"
+LOG_FILE = "award-wallet.log"
 
 
 def data_dir() -> Path:
@@ -31,16 +38,29 @@ def desktop_settings(directory: Path, token: str) -> Settings:
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     keys_file = directory / KEYS_FILE
     if not keys_file.exists():
-        write_env_file(keys_file)
+        create_keys_file(keys_file)
     return Settings(
         _env_file=keys_file,
         database_url=f"sqlite:///{directory / DATABASE_FILE}",
-        single_user=True,
-        allow_signup=False,
         auto_fetch=True,
-        screenshots_dir=directory / "screenshots",
+        screenshots_dir=directory / DIAGNOSTICS_DIR / "screenshots",
         desktop_token=token,
     )
+
+
+def start_logging(directory: Path) -> Path:
+    """Keep a small rolling log of what the app does, for troubleshooting a program's fetch."""
+    folder = directory / DIAGNOSTICS_DIR
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(folder / LOG_FILE, maxBytes=1_000_000, backupCount=2)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    # Libraries stay quiet unless something goes wrong.
+    for noisy in ("uvicorn", "uvicorn.access", "sqlalchemy", "alembic", "httpx"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+    return folder
 
 
 def _free_port() -> int:
@@ -75,14 +95,39 @@ def app_menus(window, base_url: str) -> list:
     def show_about() -> None:
         window.load_url(f"{base_url}/about")
 
+    def show_diagnostics() -> None:
+        subprocess.run(["open", str(data_dir() / DIAGNOSTICS_DIR)], check=False)
+
     return [
         # "__app__" adds to the Award Wallet menu, under its standard About and Quit items.
         Menu("__app__", [MenuAction("Check for Updates…", check_for_updates)]),
         Menu(
             "Help",
-            [MenuAction(f"About {APP_NAME}", show_about), MenuAction("Check for Updates…", check_for_updates)],
+            [
+                MenuAction(f"About {APP_NAME}", show_about),
+                MenuAction("Check for Updates…", check_for_updates),
+                MenuAction("Show Diagnostics in Finder", show_diagnostics),
+            ],
         ),
     ]
+
+
+def _show_startup_error() -> None:
+    import webview
+
+    folder = data_dir() / DIAGNOSTICS_DIR
+    webview.create_window(
+        APP_NAME,
+        html=(
+            "<body style='font:15px -apple-system,sans-serif;padding:32px;line-height:1.5'>"
+            "<h2>Award Wallet couldn't start</h2>"
+            f"<p>The details are in the log file in <code>{folder}</code>. "
+            "Send it over and it'll get fixed. Your data is safe.</p></body>"
+        ),
+        width=560,
+        height=260,
+    )
+    webview.start()
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -102,8 +147,17 @@ def main(argv: list[str] | None = None) -> None:
         playwright.stop()
         return
 
+    start_logging(data_dir())
+    logging.getLogger(__name__).info("Award Wallet %s starting", __version__)
     token = secrets.token_urlsafe(32)
-    server, thread, url = start_server(desktop_settings(data_dir(), token))
+    try:
+        server, thread, url = start_server(desktop_settings(data_dir(), token))
+    except Exception:
+        logging.getLogger(__name__).exception("Award Wallet couldn't start")
+        if args.no_window:
+            raise
+        _show_startup_error()
+        return
     start_url = f"{url}/?token={token}"
     try:
         if args.no_window:
