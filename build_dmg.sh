@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# Builds Award Wallet.app and "Award Wallet.dmg" in build/. Run it on your Mac from this folder:
-#   ./build_dmg.sh
-# The first time, it also moves your existing data (.env and data/award_wallet.db) into the
-# app's data folder, so your programs and saved logins come along.
+# Builds Award Wallet.app and "Award Wallet.dmg" in build/. GitHub runs this for each release;
+# to build one yourself on a Mac, run from this folder:
+#   bash build_dmg.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
 APP_NAME="Award Wallet"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
-DATA_DIR="$HOME/Library/Application Support/$APP_NAME"
 
 if [[ "$(uname)" != "Darwin" ]]; then
   echo "Build this on a Mac: a .app and .dmg can only be made on macOS." >&2
@@ -53,20 +51,6 @@ cp -R "build/dist/$APP_NAME.app" build/dmg/
 ln -s /Applications build/dmg/Applications
 hdiutil create -quiet -volname "$APP_NAME" -srcfolder build/dmg -ov -format UDZO "build/$APP_NAME.dmg"
 
-if [[ -n "${CI:-}" ]]; then exit 0; fi
-
-# Carry over data from the Terminal version, once. Existing app data is never overwritten.
-if [[ -f .env && ! -f "$DATA_DIR/settings.env" ]]; then
-  echo "==> Moving your existing data into the app"
-  mkdir -p "$DATA_DIR" && chmod 700 "$DATA_DIR"
-  cp .env "$DATA_DIR/settings.env" && chmod 600 "$DATA_DIR/settings.env"
-  # The -wal and -shm files hold recent changes that SQLite hasn't merged yet.
-  for f in data/award_wallet.db data/award_wallet.db-wal data/award_wallet.db-shm; do
-    if [[ -f "$f" ]]; then cp "$f" "$DATA_DIR/"; fi
-  done
-fi
-
 echo
 echo "Done: build/$APP_NAME.dmg"
-echo "Open it and drag $APP_NAME into Applications."
-open build
+if [[ -z "${CI:-}" ]]; then open build; fi

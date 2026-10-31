@@ -91,7 +91,6 @@ def _page_globals(request: Request) -> dict[str, Any]:
     return {
         "csrf_token": csrf.token_for(request.session),
         "flashes": request.session.pop(FLASHES_KEY, []),
-        "single_user": request.app.state.settings.single_user,
         "auto_fetch": request.app.state.settings.auto_fetch,
         "busy": request.app.state.refresher.busy(),
     }

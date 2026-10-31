@@ -3,6 +3,7 @@
 import logging
 import queue
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,9 @@ from award_wallet.security.vault import Vault
 from . import accounts, balances
 
 log = logging.getLogger(__name__)
+
+# Programs fetched at the same time. Each one runs its own Chrome, so keep it small.
+MAX_PARALLEL = 3
 
 
 @dataclass(frozen=True)
@@ -43,7 +47,7 @@ class Refresher:
         self._jobs: queue.Queue[_Job] = queue.Queue()
         self._waiting: set[str] = set()
         self._lock = threading.Lock()
-        self._worker: threading.Thread | None = None
+        self._workers: list[threading.Thread] = []
 
     def busy(self) -> set[str]:
         """Accounts waiting for or in the middle of a fetch."""
@@ -78,19 +82,24 @@ class Refresher:
             if job.account_id in self._waiting:
                 return False
             self._waiting.add(job.account_id)
-            if self._worker is None or not self._worker.is_alive():
-                self._worker = threading.Thread(target=self._work, name="award-wallet-refresh", daemon=True)
-                self._worker.start()
+            self._workers = [worker for worker in self._workers if worker.is_alive()]
+            if len(self._workers) < MAX_PARALLEL:
+                worker = threading.Thread(target=self._work, name="award-wallet-refresh", daemon=True)
+                worker.start()
+                self._workers.append(worker)
         self._jobs.put(job)
         return True
 
     def _work(self) -> None:
         while True:
             job = self._jobs.get()
+            started = time.monotonic()
             try:
                 self._run(job)
             except Exception:
                 log.exception("Refreshing %s failed", job.account_id)
+            else:
+                log.info("Refresh of %s took %.1fs", job.account_id, time.monotonic() - started)
             finally:
                 with self._lock:
                     self._waiting.discard(job.account_id)
@@ -111,9 +120,11 @@ class Refresher:
                     provider, credentials, state, with_person=job.with_person, screenshot_to=screenshot
                 )
             except (fetching.NeedsPerson, fetching.LoginRejected) as exc:
+                log.info("%s needs you: %s", provider.key, exc)
                 self._finish(db, account, SyncStatus.NEEDS_LOGIN, str(exc))
                 return
             except fetching.FetchProblem as exc:
+                log.warning("%s fetch failed: %s", provider.key, exc)
                 self._finish(db, account, SyncStatus.ERROR, str(exc))
                 return
             except Exception:

@@ -24,7 +24,7 @@ class FakeSites:
 
 
 def open_app(settings, sites):
-    desktop = settings.model_copy(update={"single_user": True, "desktop_token": SecretStr("t"), "auto_fetch": True})
+    desktop = settings.model_copy(update={"desktop_token": SecretStr("t"), "auto_fetch": True})
     app = create_app(desktop)
     app.state.refresher._fetch = sites
     return app
@@ -107,10 +107,7 @@ def test_security_code_request_asks_for_you_and_is_not_retried(settings):
         assert "80,000" in window.get("/").text
 
 
-def test_web_version_does_not_fetch(settings, client):
-    from conftest import register
-
-    register(client)
+def test_nothing_is_fetched_when_fetching_is_off(settings, client):
     client.app.state.refresher._fetch = FakeSites()
     link_with_login(client, "united")
     client.app.state.refresher.wait()
@@ -129,3 +126,43 @@ def test_failed_fetch_shows_why(settings):
         with app.state.sessionmaker() as db:
             assert db.query(LoyaltyAccount).one().sync_status == SyncStatus.ERROR
         assert "Couldn&#39;t reach United Airlines" in window.get("/").text
+
+
+def test_connected_program_page_is_just_the_balance(settings):
+    sites = FakeSites()
+    sites.answers["capital_one"] = 221083
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        response = link_with_login(window, "capital_one")
+        app.state.refresher.wait()
+        page = window.get(response.url).text
+        assert "221,083" in page
+        assert "<summary>Change saved login</summary>" in page
+        assert "<summary>Enter a balance by hand</summary>" in page
+        assert "<h2>Capital One login</h2>" not in page
+
+
+def test_programs_refresh_at_the_same_time(settings):
+    import threading
+    import time
+
+    running, most = [], []
+    lock = threading.Lock()
+
+    def slow_site(provider, credentials, state, *, with_person, screenshot_to=None):
+        with lock:
+            running.append(provider.key)
+            most.append(len(running))
+        time.sleep(0.6)
+        with lock:
+            running.remove(provider.key)
+        return fetching.Fetched(balance=1, session_state={"cookies": [], "origins": []})
+
+    app = open_app(settings, slow_site)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        for provider in ("united", "chase", "capital_one"):
+            link_with_login(window, provider)
+        app.state.refresher.wait()
+    assert max(most) >= 2

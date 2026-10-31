@@ -65,6 +65,19 @@ def test_first_sign_in_needs_the_person_then_runs_quietly(options):
         server.should_exit = True
 
 
+def test_the_log_shows_each_step_but_never_the_login(caplog):
+    bank, site, server = make_site()
+    try:
+        with caplog.at_level("INFO", logger="award_wallet.fetching"):
+            with pytest.raises(fetching.NeedsPerson):
+                fetching.fetch_balance(site, LOGIN, None)
+        assert "submitted the login" in caplog.text
+        assert "/verify" in caplog.text
+        assert PASSWORD not in caplog.text and USERNAME not in caplog.text
+    finally:
+        server.should_exit = True
+
+
 def test_wrong_password_is_reported(tmp_path):
     bank, site, server = make_site()
     try:

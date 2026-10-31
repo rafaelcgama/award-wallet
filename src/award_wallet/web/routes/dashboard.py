@@ -6,6 +6,7 @@ from award_wallet.services.refresh import can_fetch
 
 from ..deps import CsrfProtected, CurrentUser, DbSession
 from ..templating import flash, templates
+from .about import check_in_background
 
 router = APIRouter()
 
@@ -17,10 +18,7 @@ def dashboard(request: Request, db: DbSession, user: CurrentUser):
         # Fresh balances every time the app opens.
         state.refreshed_on_open = True
         state.refresher.refresh_all(db, user.id)
-        if state.settings.single_user:
-            from .about import check_in_background
-
-            check_in_background(request.app)
+        check_in_background(request.app)
     summaries = summarize_accounts(db, user.id)
     can_refresh = state.settings.auto_fetch and any(can_fetch(s.account) for s in summaries)
     return templates.TemplateResponse(

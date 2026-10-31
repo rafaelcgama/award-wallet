@@ -12,15 +12,6 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="/"><img src="/static/icon.png" alt="" width="24" height="24" class="brand-icon">Award Wallet</a>
-      {% if user and not single_user %}
-      <div class="topbar-user">
-        <span class="muted">{{ user.display_name }}</span>
-        <form method="post" action="/logout">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit" class="button-link">Sign out</button>
-        </form>
-      </div>
-      {% endif %}
     </div>
   </header>
   <main class="page">

@@ -5,6 +5,7 @@ browser and usually skips the sign-in, or at least the security code. The first 
 site asks for a code again, the run happens in a visible window so you can type the code.
 """
 
+import logging
 import os
 import re
 import time
@@ -15,6 +16,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from award_wallet.providers import Provider
+
+log = logging.getLogger(__name__)
 
 # How long a visible window waits for you to enter a security code.
 PERSON_TIMEOUT = 5 * 60
@@ -144,6 +147,12 @@ def _page_text(page) -> str:
     return "\n".join(parts)
 
 
+def _where(url: str) -> str:
+    """A page's address without the query or fragment, which can hold tokens: safe to log."""
+    parts = urlsplit(url)
+    return f"{parts.hostname or ''}{parts.path}"
+
+
 def _same_site(url: str, target: str) -> bool:
     return urlsplit(url).hostname == urlsplit(target).hostname
 
@@ -200,8 +209,12 @@ def _sign_in_and_read(page, provider: Provider, credentials, with_person: bool, 
     filled_username = filled_password = False
     signed_in_at: float | None = None
     last_visit = started
+    last_where = ""
 
     while time.monotonic() < deadline:
+        if (where := _where(page.url)) != last_where:
+            log.info("%s: at %s", provider.key, where)
+            last_where = where
         frame, username, password = _login_fields(page)
         on_balance_site = _same_site(page.url, provider.balance_url)
 
@@ -211,22 +224,26 @@ def _sign_in_and_read(page, provider: Provider, credentials, with_person: bool, 
                     username.fill(credentials.get("username", ""))
                 password.fill(credentials.get("password", ""))
                 password.press("Enter")
+                log.info("%s: submitted the login", provider.key)
                 filled_username = filled_password = True
                 signed_in_at = time.monotonic()
                 time.sleep(POLL * 2)
                 continue
             # The sign-in form is back after we submitted: wrong login, or a site hiccup.
             if _REJECTED_WORDS.search(_page_text(page)):
+                log.info("%s: the site rejected the login", provider.key)
                 raise LoginRejected(f"{provider.name} didn't accept the saved username or password. Save it again.")
         else:
             if on_balance_site:
                 balance = find_balance(_page_text(page), provider.balance_patterns)
                 if balance is not None:
+                    log.info("%s: found the balance", provider.key)
                     return balance
             if username is not None and not filled_username and _looks_like_sign_in(page):
                 # Sites that ask for the username first and the password on the next screen.
                 username.fill(credentials.get("username", ""))
                 username.press("Enter")
+                log.info("%s: submitted the username", provider.key)
                 filled_username = True
                 time.sleep(POLL * 2)
                 continue
@@ -234,10 +251,11 @@ def _sign_in_and_read(page, provider: Provider, credentials, with_person: bool, 
                 # Signed in, but the site landed somewhere else: go to the balance page. (A page with
                 # a box to type in, like a security code, is left alone.)
                 last_visit = time.monotonic()
+                log.info("%s: going to the balance page", provider.key)
                 try:
                     page.goto(provider.balance_url, wait_until="domcontentloaded")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log.info("%s: couldn't open the balance page: %s", provider.key, exc)
                 continue
 
         if not with_person and signed_in_at and time.monotonic() - signed_in_at > CHALLENGE_GRACE:
