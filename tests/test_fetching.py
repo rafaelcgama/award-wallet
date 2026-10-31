@@ -8,7 +8,7 @@ from award_wallet import fetching
 from award_wallet.providers import Provider
 
 CHROME = next(iter(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux64/chrome")), None)
-pytestmark = pytest.mark.skipif(CHROME is None and "AW_BROWSER_PATH" not in os.environ, reason="no browser")
+needs_browser = pytest.mark.skipif(CHROME is None and "AW_BROWSER_PATH" not in os.environ, reason="no browser")
 
 
 @pytest.fixture(autouse=True)
@@ -16,23 +16,36 @@ def browser_path(monkeypatch):
     if CHROME and "AW_BROWSER_PATH" not in os.environ:
         monkeypatch.setenv("AW_BROWSER_PATH", CHROME)
     monkeypatch.setattr(fetching, "CHALLENGE_GRACE", 4)
-    monkeypatch.setattr(fetching, "BACKGROUND_TIMEOUT", 20)
+    monkeypatch.setattr(fetching, "QUIET_TIMEOUT", 20)
 
 
-def make_site(**options):
-    bank = FakeBank(**options)
-    server, thread, url = serve(bank)
+@pytest.fixture
+def site():
+    servers = []
 
-    class Site(Provider):
-        key = name = program = "fake"
-        unit = "miles"
-        balance_url = f"{url}/account"
-        balance_patterns = (r"(\d[\d,]*)\s*miles\b",)
+    def make(**options):
+        bank = FakeBank(**options)
+        server, thread, url = serve(bank)
+        servers.append(server)
 
-    return bank, Site(), server
+        class Site(Provider):
+            key = name = program = "fake"
+            unit = "miles"
+            balance_url = f"{url}/account"
+            balance_patterns = (r"(\d[\d,]*)\s*miles\b",)
+
+        return bank, Site()
+
+    yield make
+    for server in servers:
+        server.should_exit = True
 
 
 LOGIN = {"username": USERNAME, "password": PASSWORD}
+
+
+def fetch(site, profile, **options):
+    return fetching.fetch_balance(site, LOGIN, profile, headless=True, **options)
 
 
 def type_code(page):
@@ -42,54 +55,105 @@ def type_code(page):
         box.press("Enter")
 
 
+@needs_browser
 @pytest.mark.parametrize("options", [{}, {"two_step": True}, {"in_iframe": True}])
-def test_first_sign_in_needs_the_person_then_runs_quietly(options):
-    bank, site, server = make_site(**options)
-    try:
-        # In the background the site's code request stops the run.
+def test_after_one_security_code_refreshes_need_nothing(site, tmp_path, options):
+    bank, provider = site(**options)
+    profile = tmp_path / "profile"
+
+    # A refresh that's not allowed to ask stops at the site's code request.
+    with pytest.raises(fetching.NeedsPerson):
+        fetch(provider, profile, may_ask=False)
+
+    # Normally the window comes up for the code (here, type_code plays the person).
+    assert fetch(provider, profile, while_waiting=type_code) == 52300
+    assert bank.codes_asked == 2
+
+    # Later refreshes use the same Chrome profile, so the site knows this browser: no code, even
+    # after the site's session ends and the login has to be typed again.
+    bank.expire_sessions()
+    bank.balance = 61000
+    assert fetch(provider, profile, may_ask=False) == 61000
+    assert bank.codes_asked == 2
+
+
+@needs_browser
+def test_cookies_kept_by_older_versions_carry_over(site, tmp_path):
+    bank, provider = site()
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+    assert fetch(provider, tmp_path / "profile", may_ask=False, seed_cookies=cookies) == 52300
+    assert bank.codes_asked == 0
+
+
+@needs_browser
+def test_a_balance_counts_once_it_stops_changing(site, tmp_path):
+    bank, provider = site(shows="counting", balance=163918)
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+    assert fetch(provider, tmp_path / "profile", may_ask=False, seed_cookies=cookies) == 163918
+
+
+@needs_browser
+def test_scrolls_to_a_balance_that_loads_when_seen(site, tmp_path, monkeypatch):
+    monkeypatch.setattr(fetching, "SCROLL_EVERY", 0.5)
+    bank, provider = site(shows="below")
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+    assert fetch(provider, tmp_path / "profile", may_ask=False, seed_cookies=cookies) == 52300
+
+
+@needs_browser
+def test_the_sites_own_error_is_passed_on(site, tmp_path, monkeypatch):
+    monkeypatch.setattr(fetching, "TROUBLE_GRACE", 1)
+    bank, provider = site(shows="trouble")
+    with pytest.raises(fetching.FetchProblem, match="fake says: “We can’t access your account information right now"):
+        fetch(provider, tmp_path / "profile", while_waiting=type_code)
+
+
+@needs_browser
+def test_a_page_without_the_balance_gives_up_with_a_screenshot(site, tmp_path, monkeypatch):
+    monkeypatch.setattr(fetching, "READ_TIMEOUT", 2)
+    bank, provider = site(shows="empty")
+    with pytest.raises(fetching.FetchProblem, match="Signed in to fake, but couldn't find your miles"):
+        fetch(provider, tmp_path / "profile", while_waiting=type_code, screenshot_to=tmp_path / "shot.png")
+    assert (tmp_path / "shot.png").exists()
+
+
+@needs_browser
+def test_the_log_shows_each_step_but_never_the_login(site, tmp_path, caplog):
+    bank, provider = site()
+    with caplog.at_level("INFO", logger="award_wallet.fetching"):
         with pytest.raises(fetching.NeedsPerson):
-            fetching.fetch_balance(site, LOGIN, None)
-
-        # With the person there (here, type_code plays them) it signs in and reads the balance.
-        first = fetching.fetch_balance(site, LOGIN, None, with_person=True, headless=True, while_waiting=type_code)
-        assert first.balance == 52300
-
-        # Later runs reuse the saved browser state: no code, even after the site's session ends.
-        bank.expire_sessions()
-        bank.balance = 61000
-        asked = bank.codes_asked
-        again = fetching.fetch_balance(site, LOGIN, first.session_state)
-        assert again.balance == 61000
-        assert bank.codes_asked == asked
-    finally:
-        server.should_exit = True
+            fetch(provider, tmp_path / "profile", may_ask=False)
+    assert "submitted the login" in caplog.text
+    assert "/verify" in caplog.text
+    assert PASSWORD not in caplog.text and USERNAME not in caplog.text
 
 
-def test_the_log_shows_each_step_but_never_the_login(caplog):
-    bank, site, server = make_site()
-    try:
-        with caplog.at_level("INFO", logger="award_wallet.fetching"):
-            with pytest.raises(fetching.NeedsPerson):
-                fetching.fetch_balance(site, LOGIN, None)
-        assert "submitted the login" in caplog.text
-        assert "/verify" in caplog.text
-        assert PASSWORD not in caplog.text and USERNAME not in caplog.text
-    finally:
-        server.should_exit = True
-
-
-def test_wrong_password_is_reported(tmp_path):
-    bank, site, server = make_site()
-    try:
-        with pytest.raises(fetching.LoginRejected):
-            fetching.fetch_balance(
-                site, {"username": USERNAME, "password": "nope"}, None, screenshot_to=tmp_path / "shot.png"
-            )
-        assert (tmp_path / "shot.png").exists()
-    finally:
-        server.should_exit = True
+@needs_browser
+def test_wrong_password_is_reported(site, tmp_path):
+    bank, provider = site()
+    with pytest.raises(fetching.LoginRejected):
+        fetching.fetch_balance(
+            provider,
+            {"username": USERNAME, "password": "nope"},
+            tmp_path / "profile",
+            headless=True,
+            screenshot_to=tmp_path / "shot.png",
+        )
+    assert (tmp_path / "shot.png").exists()
 
 
 def test_find_balance_reads_the_first_match():
     assert fetching.find_balance("Earn 2X miles\nRewards\n52,300 Miles", (r"(\d[\d,]*)\s*miles\b",)) == 52300
     assert fetching.find_balance("nothing here", (r"(\d[\d,]*)\s*miles\b",)) is None
+
+
+def test_a_sites_numbered_servers_count_as_the_same_site():
+    dashboard = "https://secure.chase.com/web/auth/dashboard"
+    assert fetching._same_site("https://secure07c.chase.com/web/auth/dashboard#/dashboard/overview", dashboard)
+    assert fetching._at_balance_page("https://secure07c.chase.com/web/auth/dashboard#/dashboard/overview", dashboard)
+    assert not fetching._at_balance_page("https://secure.chase.com/web/auth/#/logon/logon/chaseOnline", dashboard)
+    assert not fetching._same_site("https://www.chase.com.example.net/", dashboard)
+    assert not fetching._same_site("about:blank", dashboard)

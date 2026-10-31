@@ -38,8 +38,8 @@ def refresh_now(request: Request, db: DbSession, user: CurrentUser):
     refresher = request.app.state.refresher
     if request.app.state.settings.auto_fetch:
         refresher.refresh_all(db, user.id)
-        waiting = [s.account for s in summarize_accounts(db, user.id) if s.account.sync_status == "needs_login"]
-        if waiting:
-            names = ", ".join(account.label for account in waiting)
-            flash(request, f"{names} need{'s' if len(waiting) == 1 else ''} you to sign in first. Open it to continue.")
+        rejected = [s.account for s in summarize_accounts(db, user.id) if s.account.sync_status == "login_rejected"]
+        if rejected:
+            names = ", ".join(account.label for account in rejected)
+            flash(request, f"Skipped {names}: the site didn't accept the saved login. Open it to save it again.")
     return RedirectResponse("/", status_code=303)

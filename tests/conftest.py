@@ -20,6 +20,7 @@ def settings(tmp_path) -> Settings:
         secret_key="test-secret-key",
         encryption_keys=f"test:{generate_key()}",
         desktop_token=LAUNCH_TOKEN,
+        browser_dir=tmp_path / "Browser",
     )
 
 

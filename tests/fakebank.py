@@ -21,9 +21,31 @@ def page(body: str) -> HTMLResponse:
     return HTMLResponse(f"<!doctype html><html><body><input type='search' placeholder='Search'>{body}</body></html>")
 
 
+# What the balance page shows once signed in.
+BALANCE_PAGES = {
+    "normal": "<h1>Rewards</h1><p>Total rewards balance</p><p>{balance:,} Miles</p>",
+    # Counts up to the balance, like some dashboards do.
+    "counting": (
+        "<h1>Rewards</h1><p><span id=n>0</span> Miles</p><script>let v = 0; const t = setInterval(() => {{"
+        " v = Math.min({balance}, v + Math.ceil({balance} / 15)); n.textContent = v.toLocaleString('en-US');"
+        " if (v >= {balance}) clearInterval(t); }}, 100);</script>"
+    ),
+    "trouble": (
+        "<h1>Good Afternoon</h1><p>We can’t access your account information right now, but we’re working on it.</p>"
+    ),
+    "empty": "<h1>Rewards</h1><p>Total rewards balance</p>",
+    # The balance box loads only once it's scrolled into view.
+    "below": (
+        "<h1>Rewards</h1><div style='height: 3000px'></div><p id=box>Loading…</p><script>"
+        "new IntersectionObserver((seen) => {{ if (seen[0].isIntersecting) box.textContent = '{balance:,} Miles'; }})"
+        ".observe(box);</script>"
+    ),
+}
+
+
 class FakeBank:
-    def __init__(self, *, two_step: bool = False, in_iframe: bool = False, balance: int = 52300):
-        self.two_step, self.in_iframe, self.balance = two_step, in_iframe, balance
+    def __init__(self, *, two_step: bool = False, in_iframe: bool = False, balance: int = 52300, shows: str = "normal"):
+        self.two_step, self.in_iframe, self.balance, self.shows = two_step, in_iframe, balance, shows
         self.sessions: set[str] = set()
         self.trusted: set[str] = set()
         self.codes_asked = 0
@@ -41,7 +63,7 @@ class FakeBank:
     async def account(self, request: Request):
         if request.cookies.get("session") not in self.sessions:
             return RedirectResponse("/signin", 303)
-        return page(f"<h1>Rewards</h1><p>Total rewards balance</p><p>{self.balance:,} Miles</p>")
+        return page(BALANCE_PAGES[self.shows].format(balance=self.balance))
 
     async def signin(self, request: Request):
         if self.in_iframe and request.method == "GET":

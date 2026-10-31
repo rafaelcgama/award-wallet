@@ -43,7 +43,8 @@ class UTCDateTime(TypeDecorator[datetime]):
 class SyncStatus(StrEnum):
     PENDING = "pending"  # not fetched with the current login yet
     OK = "ok"
-    NEEDS_LOGIN = "needs_login"  # login rejected, or a security code is needed
+    NEEDS_LOGIN = "needs_login"  # the site wants a security code, and nobody entered it
+    LOGIN_REJECTED = "login_rejected"  # the site said the saved username or password is wrong
     ERROR = "error"
 
 

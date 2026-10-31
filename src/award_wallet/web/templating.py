@@ -30,6 +30,7 @@ _SYNC_BADGES = {
     SyncStatus.PENDING: StatusBadge("Not fetched yet", "neutral"),
     SyncStatus.OK: StatusBadge("Up to date", "good"),
     SyncStatus.NEEDS_LOGIN: StatusBadge("Needs your sign-in", "warn"),
+    SyncStatus.LOGIN_REJECTED: StatusBadge("Check your login", "warn"),
     SyncStatus.ERROR: StatusBadge("Fetch failed", "bad"),
 }
 

@@ -4,6 +4,28 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-31
+
+### Changed
+- Sign in once: each program now has its own Chrome profile that the app keeps, and refreshes use
+  it in a minimized Chrome window instead of a hidden one. Sites see the same browser every time,
+  so they remember this Mac and stop asking for security codes. Logins from older versions carry
+  over.
+- If a refresh needs a security code anyway, its Chrome window comes up for you to type it,
+  instead of the refresh failing.
+- Only a login the site rejected pauses automatic refreshes (**Check your login**). A program that
+  asked for a code is tried again on the next refresh.
+
+### Fixed
+- Chase: reads the Ultimate Rewards points in the dashboard's Rewards box, and never the
+  MileagePlus miles listed next to them. The reader also finds numbers drawn inside web
+  components, and recognizes every server of a site (Chase's dashboard opens on ones like
+  secure07c.chase.com).
+- When a site shows its own error, like Capital One's "We can't access your account information
+  right now", the app says so instead of waiting five minutes for the sign-in to time out. A
+  balance page that never shows the number gives up after 45 seconds, with a screenshot.
+- A balance is only taken once it stops changing, for pages that count up to it.
+
 ## [0.4.0] - 2026-10-31
 
 ### Changed

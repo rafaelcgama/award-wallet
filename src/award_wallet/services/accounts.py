@@ -66,7 +66,7 @@ def remove_credentials(db: Session, account: LoyaltyAccount) -> None:
 
 def _replace_login(db: Session, account: LoyaltyAccount, credentials_encrypted: bytes | None) -> None:
     account.credentials_encrypted = credentials_encrypted
-    # Saved cookies belong to the old login.
+    # Cookies kept by versions before 0.5 belong to the old login.
     account.session_state_encrypted = None
     account.sync_status = SyncStatus.PENDING
     account.sync_message = None

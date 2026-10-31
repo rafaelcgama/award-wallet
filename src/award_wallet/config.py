@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     desktop_token: SecretStr | None = None
     # Sign in to program websites with Chrome to fetch balances, including on every launch.
     auto_fetch: bool = False
+    # Where each program's Chrome profile lives: its cookies, and the site's memory of this Mac.
+    browser_dir: Path | None = None
     # Where a screenshot of the page is saved when a fetch fails, to help fix the program's reader.
     screenshots_dir: Path | None = None
     # GitHub repository whose releases "Check for Updates" looks at (owner/name).

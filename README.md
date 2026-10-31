@@ -22,12 +22,16 @@ the app uses to sign in to the programs' websites.
 ## Using it
 
 - **Link a program** with its username and password. A Chrome window opens and signs in; if the
-  site asks for a security code, enter it there, once. The site then remembers the browser.
+  site asks for a security code, enter it there, once. Each program has its own Chrome profile,
+  kept by the app, so the site remembers this Mac the way it remembers your own Chrome and stops
+  asking for codes.
 - **Balances refresh by themselves** every time you open the app, all programs at once. The
-  **Refresh now** button does it on demand.
-- **Needs your sign-in** means the site asked for a code again or your password changed. Open the
-  program and click **Sign in**. The app never retries a rejected login in the background, so
-  your account doesn't get locked.
+  **Refresh now** button does it on demand. Chrome works minimized in the Dock meanwhile; if a
+  site asks for a code anyway, its window comes up for you to type it.
+- **Needs your sign-in** means a site asked for a code and nobody typed it. The next refresh asks
+  again, or open the program and click **Sign in**.
+- **Check your login** means the site said the saved username or password is wrong: save it
+  again. The app never retries a rejected login by itself, so your account doesn't get locked.
 - **History** keeps every balance with its date, so you can see when points came in or went out.
 
 ## Updating
@@ -44,12 +48,15 @@ Everything lives in `~/Library/Application Support/Award Wallet`:
 | --- | --- |
 | `settings.env` | Your encryption keys. Back it up: without it, saved logins can't be decrypted. |
 | `award_wallet.db` | Your programs and balance history. |
+| `Browser/` | Each program's Chrome profile: the site's cookies, which keep it signed in and remember this Mac. Deleting one makes that site ask for a security code again. |
 | `Diagnostics/` | A log of what the app did and screenshots of pages where a fetch failed. Safe to send when something needs fixing (cover account numbers in the screenshots). **Help → Show Diagnostics in Finder** opens it. |
 
 To uninstall, drag the app to the Trash; to remove your data too, delete that folder.
 
 **Security.** Program logins are encrypted with AES-256-GCM before they're saved, and each one is
-tied to its account. They're only ever sent to the program's own website. The app's pages are
+tied to its account. They're only ever sent to the program's own website. The sites' cookies stay
+in each program's Chrome profile, which Chrome encrypts with your Mac's Keychain, the same way it
+protects your own Chrome's cookies. The app's pages are
 served only to its own window on your Mac: each launch makes a new secret that signs the window
 in, it only answers on 127.0.0.1, and every form carries a token so other websites can't submit
 forms as you.
@@ -63,7 +70,7 @@ balances. PyInstaller packages it as a .app.
 ```
 src/award_wallet/
   desktop.py     the app: window, menus, data folder, log file
-  fetching.py    signs in with Chrome and reads a balance
+  fetching.py    signs in with Chrome, in each program's own profile, and reads a balance
   providers/     one module per program: where its balance page is and how to read it
   services/      accounts, balances, background refresh
   updates.py     Check for Updates and self-install
@@ -79,8 +86,11 @@ tests/           pytest suite, including fakebank.py, a pretend bank to test sig
 
 Create a module in `src/award_wallet/providers/`, subclass `Provider`, decorate it with
 `@register`, and import it in `providers/__init__.py`. Set `balance_url` (the page that shows the
-balance once signed in) and `balance_patterns` (regular expressions that find it in the page's
-text). The sign-in itself is generic. Never rename a provider's `key`: it's stored in the database.
+balance once signed in), then either `balance_labels` (the words shown with the balance, like
+"Ultimate Rewards points": the reader takes the number in the same box) or `balance_patterns`
+(regular expressions that find it in the page's text). Labels are the better choice when a page
+shows more than one balance. The sign-in itself is generic. Never rename a provider's `key`: it's
+stored in the database.
 
 ## Development
 
