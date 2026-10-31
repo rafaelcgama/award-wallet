@@ -6,58 +6,70 @@ when it was last updated and when points expire, so you don't have to sign in to
 It runs on your own computer. Programs supported so far: United MileagePlus, Chase Ultimate
 Rewards and Capital One Miles.
 
-## The Mac app
+## Install the app
 
-Build it once on your Mac, from this folder:
+Award Wallet is a Mac app. It opens in its own window and quits when you close the window:
+nothing runs in the background and nothing sits in the menu bar.
+
+### From a release (easiest)
+
+1. Go to the repository's **Releases** page on GitHub and download the newest
+   `Award-Wallet-vX.Y.Z.dmg`.
+2. Open the .dmg and drag **Award Wallet** onto the **Applications** folder.
+3. The first time only: the app isn't signed with an Apple developer certificate, so macOS asks
+   before opening it. Right-click Award Wallet in Applications, choose **Open**, then **Open**
+   again. If macOS still refuses, go to **System Settings → Privacy & Security** and click
+   **Open Anyway** next to the Award Wallet message.
+4. Link your programs from the dashboard. Your logins are encrypted and stay on your Mac.
+
+Release builds come from GitHub's Apple Silicon Macs (M1 and newer). On an Intel Mac, build it
+yourself as below.
+
+### Build it yourself
+
+You need [uv](https://docs.astral.sh/uv/) (`brew install uv`). Then:
 
 ```sh
+git clone https://github.com/rafaelcgama/award-wallet.git
+cd award-wallet
 bash build_dmg.sh
 ```
 
-That makes `build/Award Wallet.dmg`. Open it and drag Award Wallet into Applications. After that,
-start it like any app: it opens in its own window, straight to your points, with no Terminal and
-no sign-in screen. The first build also moves your data from the Terminal version into the app.
+That runs the tests, builds `build/Award Wallet.dmg` and opens the `build` folder. Continue from
+step 2 above.
 
-The app keeps its data in `~/Library/Application Support/Award Wallet`: `settings.env` holds
-your keys (back it up) and `award_wallet.db` holds everything else. It only answers to this Mac,
-and each launch gets a new secret that the window uses to sign you in.
+### Updating
 
-Rebuild with the same command after updating the code.
+Choose **Award Wallet → Check for Updates…** or **Help → Check for Updates…**. If there's a newer
+version, download it, open the .dmg and drag Award Wallet into Applications, replacing the old
+one. Your programs and logins are kept, because they live outside the app. **Help → About Award
+Wallet** shows the version you have.
 
-## Run it from Terminal (development)
+### Uninstalling
 
-You need [uv](https://docs.astral.sh/uv/), which also installs the right Python for you:
-
-```sh
-brew install uv          # or: curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Then, from this folder:
-
-```sh
-cd ~/Projects/award-wallet
-uv sync                  # install dependencies into .venv
-uv run award-wallet init # create .env with your secret keys (once)
-uv run award-wallet serve
-```
-
-Open <http://127.0.0.1:8000>, create an account and link your programs. Stop the app with Ctrl+C.
+Drag Award Wallet from Applications to the Trash. To remove your data too, delete
+`~/Library/Application Support/Award Wallet`.
 
 ## Where your data lives
 
-Everything stays in this folder on your computer:
+The app keeps everything in `~/Library/Application Support/Award Wallet`:
 
 | File | What it holds |
 | --- | --- |
-| `.env` | Your secret keys. Back it up somewhere safe: without it, saved logins can't be decrypted. |
-| `data/award_wallet.db` | The database: accounts, programs, balance history. |
+| `settings.env` | Your secret keys. Back it up somewhere safe: without it, saved logins can't be decrypted. |
+| `award_wallet.db` | The database: programs, balance history. |
 
-Both are listed in `.gitignore`, so they never end up in git.
+The window only accepts the app itself: each launch makes a new secret that signs the window in,
+and the app only answers on 127.0.0.1.
+
+When you run it from Terminal instead (see Development), the same two files are `.env` and
+`data/award_wallet.db` in this folder. Both are in `.gitignore`, so they never end up in git. The
+first `bash build_dmg.sh` copies them into the app's folder.
 
 ## Security
 
 - **Program logins are encrypted** with AES-256-GCM before they're saved, using the key in
-  `.env`. Each encrypted login is tied to its owner and account, so it can't be copied onto
+  `settings.env` (or `.env`). Each encrypted login is tied to its owner and account, so it can't be copied onto
   another row. Logins are never shown again after you save them.
 - **Award Wallet passwords** are hashed with Argon2id.
 - **Every form carries a token**, so other websites can't submit forms as you, and the session
@@ -88,11 +100,13 @@ Set these in `.env` or as environment variables:
 | `AW_HOST` / `AW_PORT` | `127.0.0.1` / `8000` | Where the app listens. |
 | `AW_SECURE_COOKIES` | `false` | Turn on when serving over HTTPS. |
 | `AW_AUTO_MIGRATE` | `true` | Apply database migrations on startup. |
+| `AW_UPDATE_REPO` | `rafaelcgama/award-wallet` | GitHub repository that Check for Updates looks at. |
 
 ## How it's built
 
 Python 3.12, FastAPI, SQLAlchemy and Alembic, with server-rendered Jinja pages and no
-JavaScript build step.
+JavaScript build step. The Mac app shows those pages in a native window with pywebview and is
+packaged with PyInstaller.
 
 ```
 src/award_wallet/
@@ -103,6 +117,9 @@ src/award_wallet/
   web/           routes, templates and CSS
   migrations/    database schema versions (Alembic)
   cli.py         the award-wallet command
+  desktop.py     the Mac app: window, menus, data folder
+  updates.py     Check for Updates (GitHub releases)
+packaging/       app icon and the PyInstaller entry point
 tests/           pytest suite
 ```
 
@@ -115,18 +132,59 @@ Create a module in `src/award_wallet/providers/`, subclass `Provider`, decorate 
 `@register`, and import it in `providers/__init__.py`. The `key` is stored in the database, so
 never rename it. Automatic fetching plugs in through `Provider.fetch`.
 
-### Development
+## Development
+
+You need [uv](https://docs.astral.sh/uv/), which also installs the right Python. Common tasks
+have `make` shortcuts (run `make` to list them):
+
+| Command | What it does |
+| --- | --- |
+| `make setup` | Install dependencies into `.venv`, including the Mac app extras |
+| `make test` | Run the tests |
+| `make lint` / `make format` | Check, or fix, style with ruff |
+| `make check` | Lint and tests, the same as CI |
+| `make app` | Open the app window straight from the code |
+| `make run` | Serve the web version at <http://127.0.0.1:8000> with auto-reload |
+| `make dmg` | Build `build/Award Wallet.dmg` |
+
+To run the web version without make: `uv run award-wallet init` once (creates `.env`), then
+`uv run award-wallet serve`. Stop it with Ctrl+C.
+
+After editing `models.py`, add a migration:
 
 ```sh
-uv run pytest                                          # run the tests
-uv run uvicorn award_wallet.web:create_app --factory --reload --port 8000  # auto-reload
-uv run alembic revision --autogenerate -m "describe the change"            # after editing models.py
+uv run alembic revision --autogenerate -m "describe the change"
 ```
 
 `tests/test_migrations.py` fails if `models.py` changes without a matching migration.
 
+### Working with git
+
+- `main` should always build and pass `make check`. CI (`.github/workflows/ci.yml`) runs it on
+  every push and pull request.
+- For anything bigger than a small fix, work on a branch (`git switch -c my-change`), then open a
+  pull request.
+- Note changes under **Unreleased** in `CHANGELOG.md` as you go.
+
+### Making a release
+
+1. Bump `version` in `pyproject.toml` and `__version__` in `src/award_wallet/__init__.py`
+   (a test checks they match), and move the **Unreleased** notes in `CHANGELOG.md` under the new
+   version.
+2. Commit, then tag and push: `git tag v0.3.0 && git push origin main v0.3.0`.
+3. The release workflow builds the .dmg on a Mac runner and attaches it to a new GitHub release.
+   That's what **Check for Updates** looks at.
+
+Update checks read public releases. If the repository is private, the app says it can't check,
+and you update by rebuilding. The repository it checks is set by `AW_UPDATE_REPO`.
+
 ## Roadmap
 
 1. ~~Foundation: accounts, encrypted logins, manual balances~~ (done)
-2. Automatic balance fetching for United, Chase and Capital One
-3. Dashboard refresh: "refresh all", a daily automatic refresh, and upcoming expirations
+2. ~~Mac app~~ (done)
+3. Automatic balance fetching for United, Chase and Capital One
+4. Refresh every time the app opens, a "Refresh now" button, and upcoming expirations
+
+## License
+
+MIT: see [LICENSE](LICENSE).

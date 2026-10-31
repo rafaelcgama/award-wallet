@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Link {{ provider.name }} · Award Wallet{% endblock %}
+{% block content %}
+<a class="back" href="/accounts/new">← Choose another program</a>
+<div class="page-header">
+  <div>
+    <div class="eyebrow">{{ provider.name }}</div>
+    <h1>Link {{ provider.program }}</h1>
+  </div>
+</div>
+<section class="card form-card">
+  {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/accounts/new" class="stack" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="provider" value="{{ provider.key }}">
+    <label><span>Name for this account <span class="muted small">(optional)</span></span>
+      <input name="label" value="{{ label or '' }}" placeholder="{{ provider.program }}" maxlength="100">
+    </label>
+    <fieldset class="stack">
+      <legend>{{ provider.name }} login <span class="muted small">(optional)</span></legend>
+      <p class="muted small">
+        Award Wallet uses this login to read your balance from {{ provider.name }}. It's encrypted
+        before it's saved and never shown again. Leave it empty to enter balances by hand.
+        {% if not provider.supports_fetch %}
+        Automatic fetching for {{ provider.name }} isn't switched on yet, so for now you'll enter
+        the balance by hand either way.
+        {% endif %}
+      </p>
+      {% for field in provider.credential_fields %}
+      <label>{{ field.label }}
+        <input name="credential_{{ field.name }}" type="{{ 'password' if field.secret else 'text' }}"
+               autocomplete="{{ 'new-password' if field.secret else 'off' }}" autocapitalize="none" spellcheck="false">
+      </label>
+      {% endfor %}
+    </fieldset>
+    <button type="submit" class="button">Link {{ provider.program }}</button>
+  </form>
+</section>
+{% endblock %}

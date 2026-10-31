@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.venv/
+.pytest_cache/
+
+# Your secrets and data: never commit these
+.env
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Editors and macOS
+.idea/
+.vscode/
+.DS_Store
+
+# Tools
+.ruff_cache/
+*.spec

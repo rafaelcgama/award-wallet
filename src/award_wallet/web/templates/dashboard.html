@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import expiration_text, rewards_link, status_pill %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Your points</h1>
+    <p class="muted">{{ summaries|length }} program{{ "" if summaries|length == 1 else "s" }} linked</p>
+  </div>
+  <a class="button" href="/accounts/new">Link a program</a>
+</div>
+
+{% if not summaries %}
+<section class="card empty">
+  <h2>Nothing here yet</h2>
+  <p class="muted">Link United, Chase or Capital One to see your balances side by side.</p>
+  <a class="button" href="/accounts/new">Link your first program</a>
+</section>
+{% else %}
+<section class="grid">
+  {% for s in summaries %}
+  <div class="card program-card">
+    <div class="card-top">
+      <div>
+        <div class="eyebrow">{{ s.provider.name }} {{ rewards_link(s.provider) }}</div>
+        <a class="program stretched-link" href="/accounts/{{ s.account.id }}">{{ s.account.label }}</a>
+      </div>
+      {{ status_pill(s.account, s.provider) }}
+    </div>
+    {% if s.latest %}
+    <div class="balance">{{ s.latest.balance|number }} <span class="unit">{{ s.latest.unit }}</span> {{ rewards_link(s.provider) }}</div>
+    <div class="meta">Updated {{ s.latest.captured_at|time_ago }}</div>
+    {% else %}
+    <div class="balance balance-empty">No balance yet</div>
+    <div class="meta">Open it to enter one</div>
+    {% endif %}
+    {% set lot = s.next_expiration %}
+    {% if lot %}
+    <div class="expiry expiry-upcoming">{{ expiration_text(lot, s.latest.unit) }}</div>
+    {% else %}
+    <div class="expiry">{{ s.provider.expiration_policy }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

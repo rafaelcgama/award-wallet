@@ -1,0 +1,15 @@
+{% macro expiration_text(lot, unit) -%}
+{% if lot.amount %}{{ lot.amount|number }} {{ unit }} expire{% else %}Balance expires{% endif %} {{ lot.expires_on|date }} ({{ lot.expires_on|days_until }})
+{%- endmacro %}
+
+{% macro status_pill(account, provider) -%}
+{% set status = account_status(account, provider) %}
+<span class="pill pill-{{ status.tone }}">{{ status.label }}</span>
+{%- endmacro %}
+
+{% macro rewards_link(provider) -%}
+<a class="rewards-link" href="{{ provider.rewards_url }}" target="_blank" rel="noopener noreferrer"
+   title="Use your {{ provider.unit }} on {{ provider.name }}" aria-label="Use your {{ provider.unit }} on {{ provider.name }} (opens in a new tab)">
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16l20-8-6 12-3-5-5 3 1-5z"/></svg>
+</a>
+{%- endmacro %}

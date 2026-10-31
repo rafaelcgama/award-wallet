@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "_macros.html" import expiration_text, rewards_link, status_pill %}
+{% block title %}{{ account.label }} · Award Wallet{% endblock %}
+{% block content %}
+<a class="back" href="/">← All programs</a>
+<div class="page-header">
+  <div>
+    <div class="eyebrow">{{ provider.name }} · {{ provider.program }} {{ rewards_link(provider) }}</div>
+    <h1>{{ account.label }}</h1>
+  </div>
+  {{ status_pill(account, provider) }}
+</div>
+
+<section class="card">
+  {% if latest %}
+  <div class="balance balance-large">{{ latest.balance|number }} <span class="unit">{{ latest.unit }}</span> {{ rewards_link(provider) }}</div>
+  <div class="meta">
+    Updated {{ latest.captured_at|time_ago }} ({{ latest.captured_at|datetime }}){% if latest.source == "manual" %}, entered by hand{% endif %}
+  </div>
+  {% if latest.expirations %}
+  <ul class="expirations">
+    {% for lot in latest.expirations %}
+    <li>{{ expiration_text(lot, latest.unit) }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="expiry">{{ provider.expiration_policy }}</p>
+  {% endif %}
+  {% else %}
+  <div class="balance balance-empty">No balance yet</div>
+  <p class="expiry">{{ provider.expiration_policy }}</p>
+  {% endif %}
+  {% if account.sync_message %}
+  <div class="flash flash-error">{{ account.sync_message }}</div>
+  {% endif %}
+</section>
+
+<div class="columns">
+  <section class="card">
+    <h2>Enter balance by hand</h2>
+    {% if balance_error %}<div class="flash flash-error" role="alert">{{ balance_error }}</div>{% endif %}
+    <form method="post" action="/accounts/{{ account.id }}/balance" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Balance in {{ provider.unit }}
+        <input name="balance" inputmode="numeric" placeholder="52,300" required value="{{ posted.balance or '' }}">
+      </label>
+      <div class="row">
+        <label><span>Amount expiring <span class="muted small">(optional)</span></span>
+          <input name="expiring_amount" inputmode="numeric" value="{{ posted.expiring_amount or '' }}">
+        </label>
+        <label><span>Expires on <span class="muted small">(optional)</span></span>
+          <input name="expires_on" type="date" value="{{ posted.expires_on or '' }}">
+        </label>
+      </div>
+      <p class="muted small">Leave the amount empty if the whole balance expires on that date.</p>
+      <button type="submit" class="button">Save balance</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>{{ provider.name }} login</h2>
+    <p class="muted small">
+      {% if account.credentials_encrypted %}
+      A login is saved and encrypted. Enter new details to replace it.
+      {% else %}
+      No login saved, so this balance is entered by hand.
+      {% endif %}
+      {% if not provider.supports_fetch %}
+      Automatic fetching for {{ provider.name }} isn't switched on yet.
+      {% endif %}
+    </p>
+    {% if login_error %}<div class="flash flash-error" role="alert">{{ login_error }}</div>{% endif %}
+    <form method="post" action="/accounts/{{ account.id }}/login" class="stack" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% for field in provider.credential_fields %}
+      <label>{{ field.label }}
+        <input name="credential_{{ field.name }}" type="{{ 'password' if field.secret else 'text' }}"
+               autocomplete="{{ 'new-password' if field.secret else 'off' }}" autocapitalize="none" spellcheck="false">
+      </label>
+      {% endfor %}
+      <button type="submit" class="button button-secondary">Save login</button>
+    </form>
+    {% if account.credentials_encrypted %}
+    <form method="post" action="/accounts/{{ account.id }}/login/remove" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button-link">Remove saved login</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>History</h2>
+  {% if history %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>When</th><th class="num">Balance</th><th>Source</th><th>Expiring</th></tr>
+      </thead>
+      <tbody>
+        {% for snapshot in history %}
+        <tr>
+          <td class="nowrap">{{ snapshot.captured_at|datetime }}</td>
+          <td class="num">{{ snapshot.balance|number }}</td>
+          <td>{{ "By hand" if snapshot.source == "manual" else "Automatic" }}</td>
+          <td>
+            {% for lot in snapshot.expirations %}{{ lot.amount|number if lot.amount else "All" }} on {{ lot.expires_on|date }}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No balances recorded yet.</p>
+  {% endif %}
+</section>
+
+<section class="card danger-zone">
+  <h2>Remove this program</h2>
+  <p class="muted small">
+    Deletes its saved login and balance history from Award Wallet. Your {{ provider.name }} account isn't affected.
+  </p>
+  <form method="post" action="/accounts/{{ account.id }}/delete" onsubmit="return confirm('Remove this program and its history?')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="button button-danger">Remove program</button>
+  </form>
+</section>
+{% endblock %}

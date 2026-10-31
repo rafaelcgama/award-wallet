@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}About · Award Wallet{% endblock %}
+{% block content %}
+<section class="card about">
+  <img class="about-icon" src="/static/icon.png" alt="" width="96" height="96">
+  <h1>Award Wallet</h1>
+  <p class="muted">Version {{ version }}</p>
+  <p>One place for your airline miles and credit card points: balances, when they were last
+    updated and when they expire.</p>
+  {% if data_folder %}
+  <p class="muted small">Your data is kept on this Mac in <code>{{ data_folder }}</code>.</p>
+  {% endif %}
+
+  {% if checked %}
+    {% if update_error %}
+    <div class="flash flash-error" role="status">{{ update_error }}</div>
+    {% elif update_available %}
+    <div class="flash flash-info" role="status">
+      Version {{ release.version }} is available.
+      {% if release.download_url %}<a href="{{ release.download_url }}" target="_blank" rel="noopener">Download it</a>{% else %}<a href="{{ release.page_url }}" target="_blank" rel="noopener">See the release</a>{% endif %},
+      then open the .dmg and drag Award Wallet into Applications to replace this one. Your data stays put.
+    </div>
+    {% else %}
+    <div class="flash flash-info" role="status">You have the latest version.</div>
+    {% endif %}
+  {% endif %}
+
+  <p class="actions">
+    <a class="button" href="/about?check=1">Check for updates</a>
+    <a class="button button-secondary" href="/">Back to your points</a>
+  </p>
+</section>
+{% endblock %}

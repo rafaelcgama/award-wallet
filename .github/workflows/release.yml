@@ -1,0 +1,30 @@
+# Push a tag like v0.3.0 and this builds the Mac app and attaches the .dmg to a GitHub release.
+# The app's "Check for Updates" looks at these releases.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Check the tag matches the version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME but pyproject says $version"; exit 1; }
+      - name: Build
+        run: bash build_dmg.sh
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp "build/Award Wallet.dmg" "build/Award-Wallet-$GITHUB_REF_NAME.dmg"
+          gh release create "$GITHUB_REF_NAME" "build/Award-Wallet-$GITHUB_REF_NAME.dmg" \
+            --title "Award Wallet $GITHUB_REF_NAME" --generate-notes

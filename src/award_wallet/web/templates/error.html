@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ status }} · Award Wallet{% endblock %}
+{% block content %}
+<section class="card empty">
+  <h1>{{ status }}</h1>
+  <p>{{ message }}</p>
+  <a class="button" href="/">Back to your points</a>
+</section>
+{% endblock %}

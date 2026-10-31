@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Link a program · Award Wallet{% endblock %}
+{% block content %}
+<a class="back" href="/">← All programs</a>
+<div class="page-header">
+  <div>
+    <h1>Link a program</h1>
+    <p class="muted">Pick the program you want to track.</p>
+  </div>
+</div>
+<section class="grid">
+  {% for p in providers %}
+  <a class="card provider-card" href="/accounts/new?provider={{ p.key }}">
+    <div class="eyebrow">{{ p.category|title }}</div>
+    <div class="program">{{ p.name }}</div>
+    <div class="meta">{{ p.program }} · counts {{ p.unit }}</div>
+  </a>
+  {% endfor %}
+</section>
+{% endblock %}
