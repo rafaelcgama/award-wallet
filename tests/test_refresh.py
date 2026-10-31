@@ -129,3 +129,18 @@ def test_failed_fetch_shows_why(settings):
         with app.state.sessionmaker() as db:
             assert db.query(LoyaltyAccount).one().sync_status == SyncStatus.ERROR
         assert "Couldn&#39;t reach United Airlines" in window.get("/").text
+
+
+def test_connected_program_page_is_just_the_balance(settings):
+    sites = FakeSites()
+    sites.answers["capital_one"] = 221083
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        response = link_with_login(window, "capital_one")
+        app.state.refresher.wait()
+        page = window.get(response.url).text
+        assert "221,083" in page
+        assert "<summary>Change saved login</summary>" in page
+        assert "<summary>Enter a balance by hand</summary>" in page
+        assert "<h2>Capital One login</h2>" not in page

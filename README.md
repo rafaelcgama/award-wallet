@@ -16,10 +16,11 @@ nothing runs in the background and nothing sits in the menu bar.
 1. Go to the repository's **Releases** page on GitHub and download the newest
    `Award-Wallet-vX.Y.Z.dmg`.
 2. Open the .dmg and drag **Award Wallet** onto the **Applications** folder.
-3. The first time only: the app isn't signed with an Apple developer certificate, so macOS asks
-   before opening it. Right-click Award Wallet in Applications, choose **Open**, then **Open**
-   again. If macOS still refuses, go to **System Settings → Privacy & Security** and click
-   **Open Anyway** next to the Award Wallet message.
+3. The first time only: the app isn't signed with a paid Apple developer certificate, so macOS
+   says it "could not verify" Award Wallet. Click **Done**, then either run
+   `xattr -dr com.apple.quarantine "/Applications/Award Wallet.app"` in Terminal, or go to
+   **System Settings → Privacy & Security** and click **Open Anyway**. Updates installed from
+   inside the app don't ask again.
 4. Link your programs from the dashboard. Your logins are encrypted and stay on your Mac.
 
 Release builds come from GitHub's Apple Silicon Macs (M1 and newer). On an Intel Mac, build it
@@ -181,24 +182,19 @@ uv run alembic revision --autogenerate -m "describe the change"
 
 ### Working with git
 
-- `main` should always build and pass `make check`. CI (`.github/workflows/ci.yml`) runs it on
-  every push and pull request.
-- For anything bigger than a small fix, work on a branch (`git switch -c my-change`), then open a
-  pull request.
-- Note changes under **Unreleased** in `CHANGELOG.md` as you go.
+- `main` is what the installed app updates from, so every change goes on its own branch with a
+  pull request. CI (`.github/workflows/ci.yml`) runs lint and tests on it.
+- To try a branch before merging: `git fetch && git switch <branch> && make app`. That opens the
+  app straight from the code, with your real data. `git switch main` goes back.
+- Each pull request bumps the version in `pyproject.toml` and `src/award_wallet/__init__.py`
+  (a test checks they match) and adds a `CHANGELOG.md` entry.
 
-### Making a release
+### Releases
 
-From `main`, with your changes committed:
-
-```sh
-bash release.sh          # 0.3.0 -> 0.3.1, or: bash release.sh 0.4.0
-```
-
-It bumps the version in `pyproject.toml`, `src/award_wallet/__init__.py` and `CHANGELOG.md`,
-commits, tags and pushes. The release workflow then builds the .dmg on a Mac runner (about ten
-minutes, progress under the repo's **Actions** tab) and attaches it to a GitHub release, which
-the installed app offers as an update.
+Merging into `main` with a new version publishes it: the release workflow builds the .dmg on a
+Mac runner (a few minutes, under the repo's **Actions** tab) and attaches it to a GitHub
+release. The installed app then shows **Update now**. Merging without a version bump doesn't
+release anything.
 
 Update checks read public releases. If the repository is private, the app says it can't check,
 and you update by rebuilding. The repository it checks is set by `AW_UPDATE_REPO`.

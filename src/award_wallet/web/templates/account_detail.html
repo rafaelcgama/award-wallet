@@ -57,10 +57,7 @@
   {% endif %}
 </section>
 
-<div class="columns">
-  <section class="card">
-    {% if fetchable %}<details class="manual"><summary>Enter balance by hand instead</summary>{% else %}
-    <h2>Enter balance by hand</h2>{% endif %}
+{% macro manual_form() %}
     {% if balance_error %}<div class="flash flash-error" role="alert">{{ balance_error }}</div>{% endif %}
     <form method="post" action="/accounts/{{ account.id }}/balance" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -78,23 +75,8 @@
       <p class="muted small">Leave the amount empty if the whole balance expires on that date.</p>
       <button type="submit" class="button">Save balance</button>
     </form>
-    {% if fetchable %}</details>{% endif %}
-  </section>
-
-  <section class="card">
-    <h2>{{ provider.name }} login</h2>
-    <p class="muted small">
-      {% if account.credentials_encrypted %}
-      A login is saved and encrypted. Enter new details to replace it.
-      {% else %}
-      No login saved, so this balance is entered by hand.
-      {% endif %}
-      {% if not provider.supports_fetch %}
-      Automatic fetching for {{ provider.name }} isn't available yet.
-      {% elif not auto_fetch %}
-      Automatic fetching runs in the Mac app.
-      {% endif %}
-    </p>
+{% endmacro %}
+{% macro login_form() %}
     {% if login_error %}<div class="flash flash-error" role="alert">{{ login_error }}</div>{% endif %}
     <form method="post" action="/accounts/{{ account.id }}/login" class="stack" autocomplete="off">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -112,8 +94,45 @@
       <button type="submit" class="button-link">Remove saved login</button>
     </form>
     {% endif %}
+{% endmacro %}
+
+{% if fetchable %}
+<section class="card options">
+  <details class="manual"{% if balance_error %} open{% endif %}>
+    <summary>Enter a balance by hand</summary>
+    {{ manual_form() }}
+  </details>
+  <details class="manual"{% if login_error %} open{% endif %}>
+    <summary>Change saved login</summary>
+    <p class="muted small">Your {{ provider.name }} login is saved and encrypted. Enter new details to replace it.</p>
+    {{ login_form() }}
+  </details>
+</section>
+{% else %}
+<div class="columns">
+  <section class="card">
+    <h2>Enter balance by hand</h2>
+    {{ manual_form() }}
+  </section>
+
+  <section class="card">
+    <h2>{{ provider.name }} login</h2>
+    <p class="muted small">
+      {% if account.credentials_encrypted %}
+      A login is saved and encrypted. Enter new details to replace it.
+      {% else %}
+      No login saved, so this balance is entered by hand.
+      {% endif %}
+      {% if not provider.supports_fetch %}
+      Automatic fetching for {{ provider.name }} isn't available yet.
+      {% elif not auto_fetch %}
+      Automatic fetching runs in the Mac app.
+      {% endif %}
+    </p>
+    {{ login_form() }}
   </section>
 </div>
+{% endif %}
 
 <section class="card">
   <h2>History</h2>

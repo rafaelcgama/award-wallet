@@ -1,30 +1,48 @@
-# Push a tag like v0.3.0 and this builds the Mac app and attaches the .dmg to a GitHub release.
-# The app's "Check for Updates" looks at these releases.
+# Merging into main publishes a release when the version in pyproject.toml is new: this builds
+# the Mac app and attaches the .dmg. The installed app offers it under Check for Updates.
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   dmg:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - name: Check the tag matches the version
-        run: |
-          version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
-          test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME but pyproject says $version"; exit 1; }
-      - name: Build
-        run: bash build_dmg.sh
-      - name: Publish the release
+      - name: Is this version new?
+        id: version
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp "build/Award Wallet.dmg" "build/Award-Wallet-$GITHUB_REF_NAME.dmg"
-          gh release create "$GITHUB_REF_NAME" "build/Award-Wallet-$GITHUB_REF_NAME.dmg" \
-            --title "Award Wallet $GITHUB_REF_NAME" --generate-notes
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released; nothing to do."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: astral-sh/setup-uv@v6
+        if: steps.version.outputs.new == 'true'
+      - name: Build
+        if: steps.version.outputs.new == 'true'
+        run: bash build_dmg.sh
+      - name: Publish the release
+        if: steps.version.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          cp "build/Award Wallet.dmg" "build/Award-Wallet-$TAG.dmg"
+          gh release create "$TAG" "build/Award-Wallet-$TAG.dmg" --target "$GITHUB_SHA" \
+            --title "Award Wallet $TAG" --generate-notes
