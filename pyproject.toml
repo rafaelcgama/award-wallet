@@ -1,6 +1,6 @@
 [project]
 name = "award-wallet"
-version = "0.2.0"
+version = "0.3.0"
 description = "One dashboard for all your airline miles and loyalty points."
 readme = "README.md"
 license = "MIT"
@@ -25,6 +25,7 @@ award-wallet = "award_wallet.cli:main"
 
 [project.optional-dependencies]
 desktop = [
+    "playwright>=1.55",
     "pywebview>=6.2.1",
 ]
 
@@ -35,6 +36,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "httpx2>=2.16.0",
+    "playwright>=1.55",
     "pyinstaller>=6.22.3",
     "pytest>=9.1.1",
     "ruff>=0.17.3",

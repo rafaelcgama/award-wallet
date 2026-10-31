@@ -1,6 +1,7 @@
 """Settings, read from AW_* environment variables or a .env file in the current folder."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -27,6 +28,10 @@ class Settings(BaseSettings):
     # Set by the Mac app on each launch. Its window opens /?token=... once; anything else on
     # this computer that finds the port can't get in without it.
     desktop_token: SecretStr | None = None
+    # Sign in to program websites with Chrome to fetch balances, including on every app launch.
+    auto_fetch: bool = False
+    # Where a screenshot of the page is saved when a fetch fails, to help fix the program's reader.
+    screenshots_dir: Path | None = None
     # GitHub repository whose releases "Check for Updates" looks at (owner/name).
     update_repo: str = "rafaelcgama/award-wallet"
 

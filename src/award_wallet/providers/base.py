@@ -48,8 +48,13 @@ class Provider:
     # Shown when a balance has no expiration date, so "no date" never looks like missing data.
     expiration_policy: ClassVar[str]
     credential_fields: ClassVar[tuple[CredentialField, ...]] = (USERNAME, PASSWORD)
-    supports_fetch: ClassVar[bool] = False
 
-    async def fetch(self, credentials: dict[str, str], session_state: dict[str, Any] | None) -> FetchResult:
-        """Sign in to the program's website and read the balance and expirations."""
-        raise NotImplementedError(f"Automatic fetching isn't available for {self.name} yet")
+    # Automatic fetching (see award_wallet.fetching). The page that shows the balance once signed
+    # in; opening it while signed out sends you to the site's sign-in page.
+    balance_url: ClassVar[str | None] = None
+    # Regular expressions run over that page's text; group 1 is the balance, like "52,300".
+    balance_patterns: ClassVar[tuple[str, ...]] = ()
+
+    @property
+    def supports_fetch(self) -> bool:
+        return bool(self.balance_url and self.balance_patterns)

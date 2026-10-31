@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% from "_macros.html" import expiration_text, rewards_link, status_pill %}
 {% block title %}{{ account.label }} · Award Wallet{% endblock %}
+{% set fetchable = auto_fetch and provider.supports_fetch and account.credentials_encrypted %}
+{% set working = account.id in busy %}
+{% block head %}{% if working %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
 {% block content %}
 <a class="back" href="/">← All programs</a>
 <div class="page-header">
@@ -8,7 +11,7 @@
     <div class="eyebrow">{{ provider.name }} · {{ provider.program }} {{ rewards_link(provider) }}</div>
     <h1>{{ account.label }}</h1>
   </div>
-  {{ status_pill(account, provider) }}
+  {{ status_pill(account, provider, busy, auto_fetch) }}
 </div>
 
 <section class="card">
@@ -30,14 +33,34 @@
   <div class="balance balance-empty">No balance yet</div>
   <p class="expiry">{{ provider.expiration_policy }}</p>
   {% endif %}
-  {% if account.sync_message %}
+  {% if account.sync_message and not working %}
   <div class="flash flash-error">{{ account.sync_message }}</div>
+  {% endif %}
+  {% if fetchable %}
+  <div class="fetch-actions">
+    {% if working %}
+    <span class="muted">Fetching your {{ provider.unit }} from {{ provider.name }}… If a Chrome window opened, finish signing in there.</span>
+    {% elif account.sync_status == "ok" %}
+    <form method="post" action="/accounts/{{ account.id }}/refresh" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button button-secondary">Refresh</button>
+    </form>
+    <span class="muted small">Fetched automatically every time you open Award Wallet.</span>
+    {% else %}
+    <form method="post" action="/accounts/{{ account.id }}/sign-in" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button">Sign in to {{ provider.name }}</button>
+    </form>
+    <span class="muted small">Opens {{ provider.name }} in a Chrome window and fills in your login. Enter the security code if asked; after that, Award Wallet fetches your balance by itself.</span>
+    {% endif %}
+  </div>
   {% endif %}
 </section>
 
 <div class="columns">
   <section class="card">
-    <h2>Enter balance by hand</h2>
+    {% if fetchable %}<details class="manual"><summary>Enter balance by hand instead</summary>{% else %}
+    <h2>Enter balance by hand</h2>{% endif %}
     {% if balance_error %}<div class="flash flash-error" role="alert">{{ balance_error }}</div>{% endif %}
     <form method="post" action="/accounts/{{ account.id }}/balance" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -55,6 +78,7 @@
       <p class="muted small">Leave the amount empty if the whole balance expires on that date.</p>
       <button type="submit" class="button">Save balance</button>
     </form>
+    {% if fetchable %}</details>{% endif %}
   </section>
 
   <section class="card">
@@ -66,7 +90,9 @@
       No login saved, so this balance is entered by hand.
       {% endif %}
       {% if not provider.supports_fetch %}
-      Automatic fetching for {{ provider.name }} isn't switched on yet.
+      Automatic fetching for {{ provider.name }} isn't available yet.
+      {% elif not auto_fetch %}
+      Automatic fetching runs in the Mac app.
       {% endif %}
     </p>
     {% if login_error %}<div class="flash flash-error" role="alert">{{ login_error }}</div>{% endif %}
@@ -91,6 +117,7 @@
 
 <section class="card">
   <h2>History</h2>
+  <p class="muted small">Every balance is kept with its date, so you can see when {{ provider.unit }} came in or went out.</p>
   {% if history %}
   <div class="table-wrap">
     <table>

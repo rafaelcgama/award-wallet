@@ -79,6 +79,20 @@ def read_credentials(vault: Vault, account: LoyaltyAccount) -> dict[str, str] | 
     return vault.decrypt_json(account.credentials_encrypted, context=_credentials_context(account))
 
 
+def read_session_state(vault: Vault, account: LoyaltyAccount) -> dict | None:
+    if account.session_state_encrypted is None:
+        return None
+    return vault.decrypt_json(account.session_state_encrypted, context=_session_context(account))
+
+
+def save_session_state(vault: Vault, account: LoyaltyAccount, state: dict) -> None:
+    account.session_state_encrypted = vault.encrypt_json(state, context=_session_context(account))
+
+
+def _session_context(account: LoyaltyAccount) -> str:
+    return f"loyalty_account:{account.user_id}:{account.id}:session"
+
+
 def delete_account(db: Session, account: LoyaltyAccount) -> None:
     db.delete(account)
     db.commit()

@@ -1,6 +1,7 @@
 import io
 import json
 import urllib.error
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -93,3 +94,39 @@ def test_failed_check_is_explained(settings, monkeypatch):
     _fake_github(monkeypatch, error=urllib.error.HTTPError("u", 404, "nf", {}, None))
     with _window(settings) as window:
         assert "No published releases" in window.get("/about?check=1").text
+
+
+def test_installed_app_installs_updates_itself(settings, monkeypatch, tmp_path):
+    release = updates.Release("99.0.0", "https://github.com/x/y", "https://example.com/aw.dmg")
+    monkeypatch.setattr(updates, "latest_release", lambda repo: release)
+    monkeypatch.setattr(updates, "running_app_bundle", lambda: tmp_path / "Award Wallet.app")
+    started, quit_calls = [], []
+    monkeypatch.setattr(updates, "start_install", lambda r, app: started.append((r.version, app.name)))
+    monkeypatch.setattr(
+        "award_wallet.web.routes.about.threading.Timer", lambda delay, fn: type("T", (), {"start": lambda self: fn()})()
+    )
+    with _window(settings) as window:
+        window.app.state.quit_app = lambda: quit_calls.append(True)
+        about = window.get("/about?check=1").text
+        assert "Install version 99.0.0" in about
+        token = about.split('name="csrf_token" value="')[1].split('"')[0]
+        page = window.post("/about/install", data={"csrf_token": token})
+        assert "Installing version 99.0.0" in page.text
+    assert started == [("99.0.0", "Award Wallet.app")]
+    assert quit_calls == [True]
+
+
+def test_web_version_only_links_to_the_download(settings, monkeypatch):
+    release = updates.Release("99.0.0", "https://github.com/x/y", "https://example.com/aw.dmg")
+    monkeypatch.setattr(updates, "latest_release", lambda repo: release)
+    with _window(settings) as window:
+        about = window.get("/about?check=1").text
+        assert "Install version" not in about
+        assert "https://example.com/aw.dmg" in about
+
+
+def test_installer_waits_swaps_and_reopens(tmp_path):
+    script = updates.installer_script(tmp_path / "u.dmg", Path("/Applications/Award Wallet.app"), 4242)
+    assert "kill -0 4242" in script
+    assert "'/Applications/Award Wallet.app'" in script
+    assert script.rstrip().endswith("open '/Applications/Award Wallet.app'")

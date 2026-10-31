@@ -29,15 +29,19 @@ class StatusBadge:
 _SYNC_BADGES = {
     SyncStatus.PENDING: StatusBadge("Not fetched yet", "neutral"),
     SyncStatus.OK: StatusBadge("Up to date", "good"),
-    SyncStatus.NEEDS_LOGIN: StatusBadge("Needs your login", "warn"),
+    SyncStatus.NEEDS_LOGIN: StatusBadge("Needs your sign-in", "warn"),
     SyncStatus.ERROR: StatusBadge("Fetch failed", "bad"),
 }
 
 
-def account_status(account: LoyaltyAccount, provider: Provider) -> StatusBadge:
+def account_status(
+    account: LoyaltyAccount, provider: Provider, busy: bool = False, auto_fetch: bool = True
+) -> StatusBadge:
+    if busy:
+        return StatusBadge("Refreshing…", "neutral")
     if account.credentials_encrypted is None:
         return StatusBadge("Entered by hand", "neutral")
-    if not provider.supports_fetch:
+    if not (provider.supports_fetch and auto_fetch):
         return StatusBadge("Login saved", "neutral")
     return _SYNC_BADGES[SyncStatus(account.sync_status)]
 
@@ -88,6 +92,8 @@ def _page_globals(request: Request) -> dict[str, Any]:
         "csrf_token": csrf.token_for(request.session),
         "flashes": request.session.pop(FLASHES_KEY, []),
         "single_user": request.app.state.settings.single_user,
+        "auto_fetch": request.app.state.settings.auto_fetch,
+        "busy": request.app.state.refresher.busy(),
     }
 
 

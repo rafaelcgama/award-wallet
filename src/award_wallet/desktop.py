@@ -37,6 +37,8 @@ def desktop_settings(directory: Path, token: str) -> Settings:
         database_url=f"sqlite:///{directory / DATABASE_FILE}",
         single_user=True,
         allow_signup=False,
+        auto_fetch=True,
+        screenshots_dir=directory / "screenshots",
         desktop_token=token,
     )
 
@@ -87,7 +89,18 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog=APP_NAME)
     # For checking a build without a screen: start the server, print its address, keep running.
     parser.add_argument("--no-window", action="store_true", help=argparse.SUPPRESS)
+    # Checks that the app can start Chrome for fetching: prints its version and quits.
+    parser.add_argument("--check-browser", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+
+    if args.check_browser:
+        from award_wallet.fetching import browser_launcher
+
+        playwright, browser = browser_launcher(headless=True)
+        print(f"Chrome {browser.version} is ready", flush=True)
+        browser.close()
+        playwright.stop()
+        return
 
     token = secrets.token_urlsafe(32)
     server, thread, url = start_server(desktop_settings(data_dir(), token))
@@ -100,6 +113,7 @@ def main(argv: list[str] | None = None) -> None:
             import webview
 
             window = webview.create_window(APP_NAME, start_url, width=1120, height=820, min_size=(420, 560))
+            server.config.app.state.quit_app = window.destroy
             # Closing the window quits the app: nothing keeps running and there's no menu bar icon.
             # Cookies are kept between launches so the window stays signed in.
             webview.start(menu=app_menus(window, url), private_mode=False, storage_path=str(data_dir() / "webview"))

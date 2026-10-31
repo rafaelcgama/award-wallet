@@ -15,6 +15,7 @@ from award_wallet.config import Settings, get_settings
 from award_wallet.db import create_db_engine, make_sessionmaker, upgrade_database
 from award_wallet.security.vault import Vault
 from award_wallet.services import AccountNotFound
+from award_wallet.services.refresh import Refresher
 
 from .deps import LoginRequired
 from .routes import about, accounts, auth, dashboard
@@ -46,6 +47,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.sessionmaker = make_sessionmaker(engine)
     app.state.vault = Vault.from_config(settings.encryption_keys.get_secret_value())
+    app.state.refresher = Refresher(app.state.sessionmaker, app.state.vault, screenshots_dir=settings.screenshots_dir)
+    app.state.refreshed_on_open = False
+    # Set by the Mac app: closes the window, which quits the app.
+    app.state.quit_app = None
+    app.state.available_update = None
 
     app.add_middleware(
         SessionMiddleware,

@@ -1,12 +1,28 @@
 {% extends "base.html" %}
 {% from "_macros.html" import expiration_text, rewards_link, status_pill %}
+{% block head %}{% if busy %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
 {% block content %}
+{% if available_update %}
+<div class="flash flash-info" role="status">
+  Award Wallet {{ available_update.version }} is available. <a href="/about?check=1">Update now</a>
+</div>
+{% endif %}
 <div class="page-header">
   <div>
     <h1>Your points</h1>
-    <p class="muted">{{ summaries|length }} program{{ "" if summaries|length == 1 else "s" }} linked</p>
+    <p class="muted">
+      {% if busy %}Refreshing your balances…{% else %}{{ summaries|length }} program{{ "" if summaries|length == 1 else "s" }} linked{% endif %}
+    </p>
   </div>
-  <a class="button" href="/accounts/new">Link a program</a>
+  <div class="header-actions">
+    {% if can_refresh %}
+    <form method="post" action="/refresh" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button button-secondary"{% if busy %} disabled{% endif %}>Refresh now</button>
+    </form>
+    {% endif %}
+    <a class="button" href="/accounts/new">Link a program</a>
+  </div>
 </div>
 
 {% if not summaries %}
@@ -24,14 +40,18 @@
         <div class="eyebrow">{{ s.provider.name }} {{ rewards_link(s.provider) }}</div>
         <a class="program stretched-link" href="/accounts/{{ s.account.id }}">{{ s.account.label }}</a>
       </div>
-      {{ status_pill(s.account, s.provider) }}
+      {{ status_pill(s.account, s.provider, busy, auto_fetch) }}
     </div>
     {% if s.latest %}
     <div class="balance">{{ s.latest.balance|number }} <span class="unit">{{ s.latest.unit }}</span> {{ rewards_link(s.provider) }}</div>
     <div class="meta">Updated {{ s.latest.captured_at|time_ago }}</div>
     {% else %}
     <div class="balance balance-empty">No balance yet</div>
-    <div class="meta">Open it to enter one</div>
+    {% endif %}
+    {% if s.account.id not in busy and s.account.sync_message %}
+    <div class="meta meta-warn">{{ s.account.sync_message }}</div>
+    {% elif not s.latest %}
+    <div class="meta">Open it to {{ "sign in" if auto_fetch and s.provider.supports_fetch and s.account.credentials_encrypted else "enter a balance" }}</div>
     {% endif %}
     {% set lot = s.next_expiration %}
     {% if lot %}

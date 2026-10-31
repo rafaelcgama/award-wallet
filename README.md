@@ -38,12 +38,28 @@ bash build_dmg.sh
 That runs the tests, builds `build/Award Wallet.dmg` and opens the `build` folder. Continue from
 step 2 above.
 
+### Automatic balances
+
+Award Wallet signs in to United, Chase and Capital One through **Google Chrome**, so install
+Chrome if you don't have it. Link a program with its login and a Chrome window opens to sign in.
+If the site asks for a security code, enter it in that window, once. The site then remembers
+the browser, and from then on balances refresh quietly every time you open the app, or when you
+click **Refresh now**.
+
+If a site asks for a code again, or your password changes, the program shows **Needs your
+sign-in**. Open it and click **Sign in** to repeat the one-time step. Award Wallet never retries
+a rejected login in the background, so your account doesn't get locked.
+
+When a fetch fails, a screenshot of the page is saved in
+`~/Library/Application Support/Award Wallet/screenshots`, which helps fix the program's reader if
+a site changes its layout.
+
 ### Updating
 
-Choose **Award Wallet → Check for Updates…** or **Help → Check for Updates…**. If there's a newer
-version, download it, open the .dmg and drag Award Wallet into Applications, replacing the old
-one. Your programs and logins are kept, because they live outside the app. **Help → About Award
-Wallet** shows the version you have.
+Award Wallet checks for a new version each time it opens and shows a banner when there is one.
+Click **Update now** (or choose **Award Wallet → Check for Updates…**), then **Install**: the app
+downloads the new version, closes, replaces itself and reopens. Your programs and logins are kept,
+because they live outside the app. **Help → About Award Wallet** shows the version you have.
 
 ### Uninstalling
 
@@ -100,6 +116,7 @@ Set these in `.env` or as environment variables:
 | `AW_HOST` / `AW_PORT` | `127.0.0.1` / `8000` | Where the app listens. |
 | `AW_SECURE_COOKIES` | `false` | Turn on when serving over HTTPS. |
 | `AW_AUTO_MIGRATE` | `true` | Apply database migrations on startup. |
+| `AW_AUTO_FETCH` | `false` (on in the Mac app) | Sign in to program sites with Chrome to fetch balances. |
 | `AW_UPDATE_REPO` | `rafaelcgama/award-wallet` | GitHub repository that Check for Updates looks at. |
 
 ## How it's built
@@ -119,6 +136,7 @@ src/award_wallet/
   cli.py         the award-wallet command
   desktop.py     the Mac app: window, menus, data folder
   updates.py     Check for Updates (GitHub releases)
+  fetching.py    signs in with Chrome (Playwright) and reads balances
 packaging/       app icon and the PyInstaller entry point
 tests/           pytest suite
 ```
@@ -130,7 +148,10 @@ balance. A snapshot can carry several expiration lots for programs whose points 
 
 Create a module in `src/award_wallet/providers/`, subclass `Provider`, decorate it with
 `@register`, and import it in `providers/__init__.py`. The `key` is stored in the database, so
-never rename it. Automatic fetching plugs in through `Provider.fetch`.
+never rename it. For automatic fetching, set `balance_url` (the page that shows the balance) and
+`balance_patterns` (regular expressions that find it in the page's text). The sign-in itself is
+generic: `fetching.py` finds the username and password boxes, and `tests/fakebank.py` is a
+pretend site for testing it.
 
 ## Development
 
@@ -168,12 +189,16 @@ uv run alembic revision --autogenerate -m "describe the change"
 
 ### Making a release
 
-1. Bump `version` in `pyproject.toml` and `__version__` in `src/award_wallet/__init__.py`
-   (a test checks they match), and move the **Unreleased** notes in `CHANGELOG.md` under the new
-   version.
-2. Commit, then tag and push: `git tag v0.3.0 && git push origin main v0.3.0`.
-3. The release workflow builds the .dmg on a Mac runner and attaches it to a new GitHub release.
-   That's what **Check for Updates** looks at.
+From `main`, with your changes committed:
+
+```sh
+bash release.sh          # 0.3.0 -> 0.3.1, or: bash release.sh 0.4.0
+```
+
+It bumps the version in `pyproject.toml`, `src/award_wallet/__init__.py` and `CHANGELOG.md`,
+commits, tags and pushes. The release workflow then builds the .dmg on a Mac runner (about ten
+minutes, progress under the repo's **Actions** tab) and attaches it to a GitHub release, which
+the installed app offers as an update.
 
 Update checks read public releases. If the repository is private, the app says it can't check,
 and you update by rebuilding. The repository it checks is set by `AW_UPDATE_REPO`.
@@ -182,8 +207,8 @@ and you update by rebuilding. The repository it checks is set by `AW_UPDATE_REPO
 
 1. ~~Foundation: accounts, encrypted logins, manual balances~~ (done)
 2. ~~Mac app~~ (done)
-3. Automatic balance fetching for United, Chase and Capital One
-4. Refresh every time the app opens, a "Refresh now" button, and upcoming expirations
+3. ~~Automatic balances for United, Chase and Capital One, refreshed on every launch~~ (done)
+4. Upcoming expirations view
 
 ## License
 

@@ -13,3 +13,8 @@ class United(Provider):
     rewards_url = "https://www.united.com/en/us"
     expiration_policy = "MileagePlus miles don't expire."
     credential_fields = (CredentialField("username", "MileagePlus number or username"), PASSWORD)
+    balance_url = "https://www.united.com/en/us/myunited"
+    balance_patterns = (
+        r"(\d[\d,]*)\s*(?:award\s*)?miles\b",
+        r"(?:miles balance|mileageplus miles|award miles)\D{0,20}?(\d[\d,]*)",
+    )

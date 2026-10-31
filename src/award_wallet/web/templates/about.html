@@ -17,9 +17,17 @@
     {% elif update_available %}
     <div class="flash flash-info" role="status">
       Version {{ release.version }} is available.
-      {% if release.download_url %}<a href="{{ release.download_url }}" target="_blank" rel="noopener">Download it</a>{% else %}<a href="{{ release.page_url }}" target="_blank" rel="noopener">See the release</a>{% endif %},
-      then open the .dmg and drag Award Wallet into Applications to replace this one. Your data stays put.
+      {% if can_install %}Install it below; Award Wallet reopens by itself and your data stays put.
+      {% elif release.download_url %}<a href="{{ release.download_url }}" target="_blank" rel="noopener">Download it</a>,
+      then open the .dmg and drag Award Wallet into Applications. Your data stays put.
+      {% else %}<a href="{{ release.page_url }}" target="_blank" rel="noopener">See the release</a>.{% endif %}
     </div>
+    {% if can_install %}
+    <form method="post" action="/about/install">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button">Install version {{ release.version }}</button>
+    </form>
+    {% endif %}
     {% else %}
     <div class="flash flash-info" role="status">You have the latest version.</div>
     {% endif %}
