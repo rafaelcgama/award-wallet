@@ -4,6 +4,27 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-01
+
+### Fixed
+- Refreshes no longer leave sign-in pages for you to fill in:
+  - United: the app now types the username in the "Email or MileagePlus number" box on United's
+    account page, then the password. Before, it only did that on pages with "sign in" in their
+    address, so United's refresh stopped there.
+  - If a site clears the login form once without saying the login was wrong, the app types it
+    again. It never types the password more than twice in a refresh, so a wrong password can't
+    lock the account.
+- Chase: its "Let's make sure it's you" page (a code by text or call) brings the window up right
+  away, instead of the app looking for the points on it for 45 seconds and then failing. Sites
+  ask this the first time they see the app's browser; after that, refreshes run on their own.
+- While a site's window is up for you, the program shows **Waiting for you** with a note saying
+  what the site wants.
+- Chrome no longer offers to save the password (the app keeps it) or to restore pages after a
+  refresh was cut short.
+- Refresh windows sit off screen instead of minimized in the Dock, so pages load like they do in
+  any open window. Moving the window no longer fails after a site switches the page to another
+  process.
+
 ## [0.5.0] - 2026-10-31
 
 ### Changed

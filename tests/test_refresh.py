@@ -1,3 +1,5 @@
+import threading
+
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -17,11 +19,15 @@ class FakeSites:
         self.profiles: list = []
         self.seeds: list = []
 
-    def __call__(self, provider, credentials, profile, *, with_person, screenshot_to=None, seed_cookies=None):
+    def __call__(
+        self, provider, credentials, profile, *, with_person, screenshot_to=None, seed_cookies=None, on_needs_you=None
+    ):
         self.calls.append((provider.key, with_person))
         self.profiles.append(profile)
         self.seeds.append(seed_cookies)
         answer = self.answers.get(provider.key, 1000)
+        if callable(answer):
+            answer = answer(on_needs_you)
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -131,6 +137,31 @@ def test_an_unanswered_security_code_is_asked_again_on_the_next_refresh(settings
         assert "80,000" in window.get("/").text
 
 
+def test_the_app_says_what_a_site_wants_while_its_window_is_up(settings):
+    sites = FakeSites()
+    window_up, you_finished = threading.Event(), threading.Event()
+
+    def chase_asks(on_needs_you):
+        on_needs_you("Chase wants to confirm it's you, usually only the first time.")
+        window_up.set()
+        you_finished.wait(10)
+        return 80000
+
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        sites.answers["chase"] = chase_asks
+        response = link_with_login(window, "chase")
+        assert window_up.wait(10)
+        for page in (window.get("/").text, window.get(response.url).text):
+            assert "Waiting for you" in page
+            assert "Chase wants to confirm it&#39;s you, usually only the first time." in page
+        you_finished.set()
+        app.state.refresher.wait()
+        page = window.get("/").text
+        assert "80,000" in page and "Waiting for you" not in page and "confirm it&#39;s you" not in page
+
+
 def test_a_rejected_login_is_not_retried_until_saved_again(settings):
     sites = FakeSites()
     sites.answers["chase"] = fetching.LoginRejected(
@@ -235,7 +266,9 @@ def test_programs_refresh_at_the_same_time(settings):
     running, most = [], []
     lock = threading.Lock()
 
-    def slow_site(provider, credentials, profile, *, with_person, screenshot_to=None, seed_cookies=None):
+    def slow_site(
+        provider, credentials, profile, *, with_person, screenshot_to=None, seed_cookies=None, on_needs_you=None
+    ):
         with lock:
             running.append(provider.key)
             most.append(len(running))

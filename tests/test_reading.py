@@ -32,6 +32,20 @@ def browser():
         browser.close()
 
 
+def test_a_confirm_its_you_page_drawn_in_web_components_is_recognized(browser):
+    page = browser.new_page()
+    page.set_content(
+        "<!doctype html><body><x-card></x-card><script>customElements.define('x-card', class extends HTMLElement {"
+        " constructor() { super(); this.attachShadow({ mode: 'open' }).innerHTML ="
+        " '<h1>Let’s make sure it’s you</h1><p>We’ll text a one-time code to your phone.</p>'; } });</script>"
+    )
+    assert "make sure" not in page.locator("body").inner_text()  # the page's plain text misses it
+    assert fetching._asks_who_you_are(page)
+    page.set_content("<!doctype html><body><h2>Rewards</h2><p>163,918 Ultimate Rewards points</p></body>")
+    assert not fetching._asks_who_you_are(page)
+    page.close()
+
+
 @pytest.fixture
 def read(browser):
     page = browser.new_page()

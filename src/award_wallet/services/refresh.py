@@ -51,6 +51,8 @@ class Refresher:
         self._screenshots_dir = screenshots_dir
         self._jobs: queue.Queue[_Job] = queue.Queue()
         self._waiting: set[str] = set()
+        # What a site wants from you, by account, while its window is up for you.
+        self._notes: dict[str, str] = {}
         self._lock = threading.Lock()
         self._workers: list[threading.Thread] = []
 
@@ -58,6 +60,15 @@ class Refresher:
         """Accounts waiting for or in the middle of a fetch."""
         with self._lock:
             return set(self._waiting)
+
+    def needs_you(self) -> dict[str, str]:
+        """Accounts whose Chrome window is up for you, with a note saying what the site wants."""
+        with self._lock:
+            return dict(self._notes)
+
+    def _note(self, account_id: str, note: str) -> None:
+        with self._lock:
+            self._notes[account_id] = note
 
     def refresh_all(self, db: Session, user_id: str) -> int:
         """Queue a quiet fetch of every program that can be fetched. Returns how many were queued.
@@ -115,6 +126,7 @@ class Refresher:
             finally:
                 with self._lock:
                     self._waiting.discard(job.account_id)
+                    self._notes.pop(job.account_id, None)
                 self._jobs.task_done()
 
     def _run(self, job: _Job) -> None:
@@ -137,6 +149,7 @@ class Refresher:
                     with_person=job.with_person,
                     screenshot_to=screenshot,
                     seed_cookies=old_state.get("cookies"),
+                    on_needs_you=lambda note: self._note(job.account_id, note),
                 )
             except Exception as exc:
                 status, message = self._outcome(provider, exc)

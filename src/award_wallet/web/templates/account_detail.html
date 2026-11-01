@@ -11,7 +11,7 @@
     <div class="eyebrow">{{ provider.name }} · {{ provider.program }} {{ rewards_link(provider) }}</div>
     <h1>{{ account.label }}</h1>
   </div>
-  {{ status_pill(account, provider, busy, auto_fetch) }}
+  {{ status_pill(account, provider, busy, auto_fetch, needs_you) }}
 </div>
 
 <section class="card">
@@ -39,7 +39,11 @@
   {% if fetchable %}
   <div class="fetch-actions">
     {% if working %}
+    {% if account.id in needs_you %}
+    <span class="meta-warn">{{ needs_you[account.id] }}</span>
+    {% else %}
     <span class="muted">Fetching your {{ provider.unit }} from {{ provider.name }}… If a Chrome window opened, finish signing in there.</span>
+    {% endif %}
     {% elif account.sync_status == "ok" %}
     <form method="post" action="/accounts/{{ account.id }}/refresh" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

@@ -36,8 +36,10 @@ _SYNC_BADGES = {
 
 
 def account_status(
-    account: LoyaltyAccount, provider: Provider, busy: bool = False, auto_fetch: bool = True
+    account: LoyaltyAccount, provider: Provider, busy: bool = False, auto_fetch: bool = True, needs_you: bool = False
 ) -> StatusBadge:
+    if busy and needs_you:
+        return StatusBadge("Waiting for you", "warn")
     if busy:
         return StatusBadge("Refreshing…", "neutral")
     if account.credentials_encrypted is None:
@@ -94,6 +96,7 @@ def _page_globals(request: Request) -> dict[str, Any]:
         "flashes": request.session.pop(FLASHES_KEY, []),
         "auto_fetch": request.app.state.settings.auto_fetch,
         "busy": request.app.state.refresher.busy(),
+        "needs_you": request.app.state.refresher.needs_you(),
     }
 
 
