@@ -22,12 +22,13 @@ the app uses to sign in to the programs' websites.
 ## Using it
 
 - **Link a program** with its username and password. A Chrome window opens and signs in; if the
-  site asks for a security code, enter it there, once. Each program has its own Chrome profile,
-  kept by the app, so the site remembers this Mac the way it remembers your own Chrome and stops
-  asking for codes.
+  site asks to confirm it's you (a code by text, say), do it there, once. Each program has its own
+  Chrome profile, kept by the app, so the site remembers this Mac the way it remembers your own
+  Chrome and stops asking.
 - **Balances refresh by themselves** every time you open the app, all programs at once. The
-  **Refresh now** button does it on demand. Chrome works minimized in the Dock meanwhile; if a
-  site asks for a code anyway, its window comes up for you to type it.
+  **Refresh now** button does it on demand. Chrome signs in out of sight meanwhile, typing the
+  saved login itself. Its window only comes up if a site wants something only you can give, and
+  the program then shows **Waiting for you** with a note saying what the site wants.
 - **Needs your sign-in** means a site asked for a code and nobody typed it. The next refresh asks
   again, or open the program and click **Sign in**.
 - **Check your login** means the site said the saved username or password is wrong: save it

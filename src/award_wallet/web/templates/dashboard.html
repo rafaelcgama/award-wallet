@@ -40,7 +40,7 @@
         <div class="eyebrow">{{ s.provider.name }} {{ rewards_link(s.provider) }}</div>
         <a class="program stretched-link" href="/accounts/{{ s.account.id }}">{{ s.account.label }}</a>
       </div>
-      {{ status_pill(s.account, s.provider, busy, auto_fetch) }}
+      {{ status_pill(s.account, s.provider, busy, auto_fetch, needs_you) }}
     </div>
     {% if s.latest %}
     <div class="balance">{{ s.latest.balance|number }} <span class="unit">{{ s.latest.unit }}</span> {{ rewards_link(s.provider) }}</div>
@@ -48,7 +48,9 @@
     {% else %}
     <div class="balance balance-empty">No balance yet</div>
     {% endif %}
-    {% if s.account.id not in busy and s.account.sync_message %}
+    {% if s.account.id in needs_you %}
+    <div class="meta meta-warn">{{ needs_you[s.account.id] }}</div>
+    {% elif s.account.id not in busy and s.account.sync_message %}
     <div class="meta meta-warn">{{ s.account.sync_message }}</div>
     {% elif not s.latest %}
     <div class="meta">Open it to {{ "sign in" if auto_fetch and s.provider.supports_fetch and s.account.credentials_encrypted else "enter a balance" }}</div>

@@ -2,8 +2,8 @@
 {% if lot.amount %}{{ lot.amount|number }} {{ unit }} expire{% else %}Balance expires{% endif %} {{ lot.expires_on|date }} ({{ lot.expires_on|days_until }})
 {%- endmacro %}
 
-{% macro status_pill(account, provider, busy=(), auto_fetch=True) -%}
-{% set status = account_status(account, provider, account.id in busy, auto_fetch) %}
+{% macro status_pill(account, provider, busy=(), auto_fetch=True, needs_you={}) -%}
+{% set status = account_status(account, provider, account.id in busy, auto_fetch, account.id in needs_you) %}
 <span class="pill pill-{{ status.tone }}">{{ status.label }}</span>
 {%- endmacro %}
 
