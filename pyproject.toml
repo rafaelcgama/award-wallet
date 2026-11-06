@@ -1,6 +1,6 @@
 [project]
 name = "award-wallet"
-version = "0.11.2"
+version = "0.11.3"
 description = "One dashboard for all your airline miles and loyalty points."
 readme = "README.md"
 requires-python = ">=3.12"

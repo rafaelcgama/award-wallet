@@ -199,8 +199,7 @@ _SITE_TROUBLE = re.compile(
 # plain text leaves out. A number only counts if it stands on its own (a balance, not the "5" in
 # "earn 5 points per dollar").
 _READ_BY_LABEL = r"""
-([source, maxClimb]) => {
-  const label = new RegExp(source, "i");
+([sources, maxClimb]) => {
   const value = /^(\d{1,3}(?:,\d{3})+|\d+)\s*(?:pts|points|miles)?\s*[*†‡¹²³]?$/i;
   const skip = new Set(["head", "script", "style", "noscript", "template", "svg"]);
   const parent = new Map();
@@ -247,39 +246,46 @@ _READ_BY_LABEL = r"""
     }
     return matches.filter((element) => !outer.has(element));
   };
-  const labels = innermost((words) => label.test(words));
-  if (!labels.length) return { number: null, seen: "no label" };
-  const values = innermost((words) => value.test(words));
   const inside = (element, box) => {
     for (let at = element; at; at = parent.get(at)) if (at === box) return true;
     return false;
   };
+  let values = null;
 
-  const found = [];
-  let crowded = false;
-  for (const element of labels) {
-    // The label and its number in one piece of text, like "163,918 Ultimate Rewards points".
-    const rest = text.get(element).replace(label, "").replace(/^[\s:]+|[\s:]+$/g, "");
-    const own = rest.match(value);
-    if (own) {
-      found.push({ distance: 0, number: own[1] });
-      continue;
+  // The page was walked once above; each label is read from that walk, in order.
+  const read = (source) => {
+    const label = new RegExp(source, "i");
+    const labels = innermost((words) => label.test(words));
+    if (!labels.length) return { number: null, seen: "no label" };
+    values ??= innermost((words) => value.test(words));
+
+    const found = [];
+    let crowded = false;
+    for (const element of labels) {
+      // The label and its number in one piece of text, like "163,918 Ultimate Rewards points".
+      const rest = text.get(element).replace(label, "").replace(/^[\s:]+|[\s:]+$/g, "");
+      const own = rest.match(value);
+      if (own) {
+        found.push({ distance: 0, number: own[1] });
+        continue;
+      }
+      // Otherwise the nearest box around the label that holds a number decides.
+      let box = element;
+      for (let distance = 0; box && distance <= maxClimb; distance++, box = parent.get(box)) {
+        const numbers = new Set(values.filter((v) => inside(v, box)).map((v) => text.get(v).match(value)[1]));
+        if (!numbers.size) continue;
+        if (numbers.size === 1) found.push({ distance, number: [...numbers][0] });
+        else crowded = true;
+        break;
+      }
     }
-    // Otherwise the nearest box around the label that holds a number decides.
-    let box = element;
-    for (let distance = 0; box && distance <= maxClimb; distance++, box = parent.get(box)) {
-      const numbers = new Set(values.filter((v) => inside(v, box)).map((v) => text.get(v).match(value)[1]));
-      if (!numbers.size) continue;
-      if (numbers.size === 1) found.push({ distance, number: [...numbers][0] });
-      else crowded = true;
-      break;
-    }
-  }
-  if (!found.length) return { number: null, seen: crowded ? "several numbers next to it" : "no number next to it" };
-  const nearest = Math.min(...found.map((item) => item.distance));
-  const numbers = new Set(found.filter((item) => item.distance === nearest).map((item) => item.number));
-  if (numbers.size > 1) return { number: null, seen: "different numbers next to it in different places" };
-  return { number: [...numbers][0], seen: "found" };
+    if (!found.length) return { number: null, seen: crowded ? "several numbers next to it" : "no number next to it" };
+    const nearest = Math.min(...found.map((item) => item.distance));
+    const numbers = new Set(found.filter((item) => item.distance === nearest).map((item) => item.number));
+    if (numbers.size > 1) return { number: null, seen: "different numbers next to it in different places" };
+    return { number: [...numbers][0], seen: "found" };
+  };
+  return sources.map(read);
 }
 """
 
@@ -488,14 +494,17 @@ def find_balance(text: str, patterns: tuple[str, ...]) -> int | None:
 
 
 def read_by_label(page, labels: tuple[str, ...]) -> tuple[int | None, str]:
-    """The number one of the labels names on the page, and what was seen, for the log."""
+    """The number one of the labels names on the page, and what was seen, for the log. Each frame
+    is walked once for all the labels, and the first label has the first say."""
+    looks = []
+    for frame in _frames(page):
+        try:
+            looks.append(frame.evaluate(_READ_BY_LABEL, [list(labels), MAX_CLIMB]))
+        except Exception:  # frames come and go while a page loads
+            continue
     seen = "no label on the page yet"
-    for label in labels:
-        for frame in _frames(page):
-            try:
-                found = frame.evaluate(_READ_BY_LABEL, [label, MAX_CLIMB])
-            except Exception:  # frames come and go while a page loads
-                continue
+    for index in range(len(labels)):
+        for found in (look[index] for look in looks):
             if found["number"] is not None:
                 return int(found["number"].replace(",", "")), "found the label and its number"
             if found["seen"] != "no label":
