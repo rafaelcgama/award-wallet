@@ -4,12 +4,15 @@ from datetime import date, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from award_wallet.models import BalanceSnapshot, BalanceSource, ExpirationLot, LoyaltyAccount, utcnow
+from award_wallet.models import BalanceSnapshot, BalanceSource, ExpirationLot, LoyaltyAccount, SyncStatus, utcnow
 from award_wallet.providers import Expiration, get_provider
 
 from .errors import InvalidInput
 
 MAX_BALANCE = 10**12
+# A refresh that reads less than half the last balance, and at least this many fewer, waits for
+# you: a fall that big could be some other number on the site's page, or points you didn't spend.
+HOLD_DROPS_OF = 1000
 
 
 def record_balance(
@@ -30,6 +33,11 @@ def record_balance(
         if lot.amount is not None and not 0 < lot.amount <= balance:
             raise InvalidInput("The expiring amount must be more than zero and at most the balance.")
 
+    if account.held_balance is not None:
+        # Whatever goes into the history now settles the balance a refresh held back.
+        account.held_balance = None
+        if account.sync_status == SyncStatus.CHECK_BALANCE:
+            account.sync_status = SyncStatus.OK
     when = captured_at or utcnow()
     newest = latest_snapshots(db, [account.id]).get(account.id)
     if source == BalanceSource.SYNC and not expirations and newest is not None:
@@ -49,6 +57,27 @@ def record_balance(
     entry.expirations = [ExpirationLot(expires_on=lot.expires_on, amount=lot.amount) for lot in expirations]
     db.commit()
     return entry
+
+
+def held_back_from(db: Session, account: LoyaltyAccount, balance: int) -> int | None:
+    """The last balance, when a refresh's reading fell to less than half of it, by at least
+    HOLD_DROPS_OF: that reading waits for you before it goes into the history."""
+    newest = latest_snapshots(db, [account.id]).get(account.id)
+    if newest is not None and balance * 2 < newest.balance and newest.balance - balance >= HOLD_DROPS_OF:
+        return newest.balance
+    return None
+
+
+def settle_held_balance(db: Session, account: LoyaltyAccount, *, keep: bool) -> None:
+    """Your answer about a balance a refresh held back: keep it, or keep the one before it."""
+    held = account.held_balance
+    if keep and held is not None:
+        record_balance(db, account, balance=held, source=BalanceSource.SYNC, captured_at=account.last_synced_at)
+        return
+    account.held_balance = None
+    if account.sync_status == SyncStatus.CHECK_BALANCE:
+        account.sync_status = SyncStatus.OK
+    db.commit()
 
 
 def _kept_expirations(snapshot: BalanceSnapshot, balance: int, today: date) -> list[Expiration]:

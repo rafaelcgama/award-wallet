@@ -607,3 +607,47 @@ def test_a_browser_profile_stays_inside_the_browser_folder(app):
     for not_an_id in ("", ".", "..", "../Diagnostics", "a/b"):
         with pytest.raises(ValueError):
             app.state.refresher.browser_profile(not_an_id)
+
+
+def test_a_balance_that_falls_by_more_than_half_waits_for_you(settings):
+    # A fall that big could be some other number on the site's page, or points you didn't spend.
+    sites = FakeSites()
+    sites.answers["united"] = 80000
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        page = link_with_login(window, "united").url.path
+        app.state.refresher.wait()
+
+        def refresh(balance):
+            sites.answers["united"] = balance
+            post_form(window, "/refresh", {}, token_from="/")
+            app.state.refresher.wait()
+
+        def state():
+            with app.state.sessionmaker() as db:
+                account = db.query(LoyaltyAccount).one()
+                newest = max(account.snapshots, key=lambda snapshot: snapshot.captured_at)
+                return account.sync_status, account.held_balance, newest.balance
+
+        refresh(20000)
+        assert state() == (SyncStatus.CHECK_BALANCE, 20000, 80000)
+        assert "The last refresh read 20,000. Is that right?" in window.get("/").text
+        shown = window.get(page).text
+        assert "The last refresh read 20,000 miles, down from 80,000" in shown
+        assert ">Refresh</button>" in shown  # signing in went fine, so no Sign in button
+        refresh(80000)  # the old balance again: the 20,000 was a misreading
+        assert state() == (SyncStatus.OK, None, 80000)
+
+        refresh(20000)
+        post_form(window, f"{page}/held", {"keep": "old"}, token_from=page)
+        assert state() == (SyncStatus.OK, None, 80000)
+        refresh(20000)
+        post_form(window, f"{page}/held", {"keep": "new"}, token_from=page)
+        assert state() == (SyncStatus.OK, None, 20000)
+        refresh(12000)  # down, but not by more than half
+        assert state() == (SyncStatus.OK, None, 12000)
+
+        refresh(1000)
+        post_form(window, f"{page}/balance", {"balance": "11,500"}, token_from=page)  # entered by hand
+        assert state() == (SyncStatus.OK, None, 11500)

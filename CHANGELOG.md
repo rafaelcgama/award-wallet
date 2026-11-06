@@ -4,6 +4,14 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-06
+
+### Added
+- A refresh that reads less than half of a program's balance, and at least 1,000 fewer, no longer
+  goes into the history by itself. The program shows **Check the balance**, and its page asks
+  whether to keep the new balance or the one before. A fall that big could be some other number on
+  the site's page, or points you didn't spend, which is worth a look at your account.
+
 ## [0.10.3] - 2026-11-06
 
 ### Fixed

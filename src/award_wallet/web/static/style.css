@@ -112,6 +112,8 @@ a.card:hover, .program-card:hover { border-color: var(--accent); box-shadow: 0 4
 .flash { border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; background: var(--neutral-bg); }
 .flash-info { background: var(--good-bg); color: var(--good); }
 .flash-error { background: var(--bad-bg); color: var(--bad); }
+.flash-warn { background: var(--warn-bg); color: var(--warn); }
+.flash-warn p { margin: 0; }
 
 .empty { text-align: center; padding: 48px 20px; }
 

@@ -80,6 +80,8 @@ def _replace_login(db: Session, account: LoyaltyAccount, credentials_encrypted: 
     account.session_state_encrypted = None
     account.sync_status = SyncStatus.PENDING
     account.sync_message = None
+    # A balance held back for you came from the old login; the next refresh reads it again.
+    account.held_balance = None
     db.commit()
 
 

@@ -36,6 +36,16 @@
   {% if account.sync_message and not working %}
   <div class="flash flash-error">{{ account.sync_message }}</div>
   {% endif %}
+  {% if account.held_balance is not none and latest and not working %}
+  <div class="flash flash-warn" role="status">
+    <p><strong>Is this right?</strong> The last refresh read {{ account.held_balance|number }} {{ latest.unit }}, down from {{ latest.balance|number }}, so it waits for you before going into the history. If you used them, keep the new balance. If not, look at your account on {{ provider.name }}'s site: if it shows {{ latest.balance|number }}, keep that; if it also shows {{ account.held_balance|number }}, contact {{ provider.name }}.</p>
+    <form method="post" action="/accounts/{{ account.id }}/held" class="fetch-actions">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" name="keep" value="new" class="button">Keep {{ account.held_balance|number }}</button>
+      <button type="submit" name="keep" value="old" class="button button-secondary">Keep {{ latest.balance|number }}</button>
+    </form>
+  </div>
+  {% endif %}
   {% if fetchable %}
   <div class="fetch-actions">
     {% if working %}
@@ -45,7 +55,7 @@
     {% else %}
     <span class="muted">Fetching your {{ provider.unit }} from {{ provider.name }}…</span>
     {% endif %}
-    {% elif account.sync_status == "ok" %}
+    {% elif account.sync_status in ("ok", "check_balance") %}
     <form method="post" action="/accounts/{{ account.id }}/refresh" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit" class="button button-secondary">Refresh</button>
