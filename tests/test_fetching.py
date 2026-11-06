@@ -8,6 +8,7 @@ from fakebank import CODE, PASSWORD, USERNAME, FakeBank, serve
 
 from award_wallet import fetching
 from award_wallet.providers import Provider
+from award_wallet.sign_in_view import SignInView
 
 CHROME = next(iter(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux64/chrome")), None)
 needs_browser = pytest.mark.skipif(CHROME is None and "AW_BROWSER_PATH" not in os.environ, reason="no browser")
@@ -47,18 +48,42 @@ LOGIN = {"username": USERNAME, "password": PASSWORD}
 
 
 def fetch(site, profile, **options):
-    return fetching.fetch_balance(site, LOGIN, profile, headless=True, **options)
+    return fetching.fetch_balance(site, LOGIN, profile, **options)
 
 
-def type_code(page):
-    """You, at the window: ask for the code by text if the site lets you choose, then type it."""
-    text = page.get_by_role("button", name="Get a text")
-    if text.count() and text.is_visible():
-        text.click()
-    box = page.locator("input[name=code]")
-    if box.count() and box.is_visible() and not box.input_value():
-        box.fill(CODE)
-        box.press("Enter")
+def click(locator) -> dict:
+    """A click in the middle of something on the page, as the app's window sends it."""
+    box = locator.bounding_box()
+    return {"kind": "click", "x": box["x"] + box["width"] / 2, "y": box["y"] + box["height"] / 2}
+
+
+def type_code(view):
+    """You, in the app's window: ask for the code by text if the site lets you choose, then type
+    it, all by clicking and typing on the picture of the page. (The test looks at the page itself
+    to know where on the picture things are.)"""
+
+    def you(page):
+        if not view.status()["picture"]:
+            return  # nothing on screen yet
+        try:
+            box = page.locator("input[name=code]")
+            if box.count() and box.is_visible():
+                if not box.input_value():
+                    view.send([click(box), {"kind": "text", "text": CODE}, {"kind": "key", "key": "Enter"}])
+                return
+            text = page.get_by_role("button", name="Get a text")
+            if text.count() and text.is_visible():
+                view.send([click(text)])
+        except Exception:  # the page is changing
+            pass
+
+    return you
+
+
+def sign_in(provider, profile, you=type_code, **options):
+    """Sign in with you at the app's window."""
+    view = SignInView(provider.name)
+    return fetch(provider, profile, view=view, while_waiting=you(view), **options), view
 
 
 @needs_browser
@@ -81,9 +106,12 @@ def test_after_one_security_code_refreshes_need_nothing(site, tmp_path, options)
     with pytest.raises(fetching.NeedsPerson, match="Click Sign in"):
         fetch(provider, profile)
 
-    # Sign in opens the window, where you type the code (here, type_code plays you).
-    assert fetch(provider, profile, with_person=True, while_waiting=type_code) == 52300
+    # Sign in shows the page in the app's window, where you type the code (type_code plays you).
+    balance, view = sign_in(provider, profile)
+    assert balance == 52300
     assert bank.codes_asked == 2
+    assert view.picture().startswith(b"\xff\xd8")  # a JPEG of the page
+    assert view.status()["width"] > 0 and view.status()["height"] > 0
 
     # Later refreshes use the same Chrome profile, so the site knows this browser: no code, even
     # after the site's session ends and the login has to be typed again.
@@ -135,37 +163,103 @@ def test_a_refresh_that_needs_you_stops_and_says_why(site, tmp_path, caplog, mon
 
 
 @needs_browser
-def test_at_the_window_the_app_says_what_the_site_wants(site, tmp_path, monkeypatch):
+def test_while_you_sign_in_the_app_says_what_the_site_wants(site, tmp_path, monkeypatch):
     monkeypatch.setattr(fetching, "CHALLENGE_GRACE", 60)
     bank, provider = site(confirm_in_place=True)
-    notes = []
 
-    def you_after_the_note(page):
-        if notes:
-            type_code(page)
+    def you_after_the_note(view):
+        you = type_code(view)
+        return lambda page: you(page) if view.note else None
 
-    balance = fetch(
-        provider, tmp_path / "profile", with_person=True, while_waiting=you_after_the_note, on_needs_you=notes.append
-    )
+    balance, view = sign_in(provider, tmp_path / "profile", you=you_after_the_note)
     assert balance == 52300
-    assert notes == [
-        "fake wants to confirm it's you, usually only the first time. Finish it in the fake window; "
+    assert view.note == (
+        "fake wants to confirm it's you, usually only the first time. Do what it asks below; "
         "after that, refreshes run on their own."
-    ]
+    )
 
 
-def test_a_refresh_runs_hidden_and_a_sign_in_gets_a_window(site, tmp_path):
+def test_a_sign_in_runs_in_the_same_hidden_chrome_as_a_refresh(site, tmp_path):
     bank, provider = site()
     launched = []
 
-    def launcher(profile, headless):
-        launched.append(headless)
+    def launcher(profile):
+        launched.append(profile)
         raise RuntimeError("enough")
 
-    for with_person in (False, True):
+    for view in (None, SignInView("fake")):
         with pytest.raises(RuntimeError):
-            fetching.fetch_balance(provider, LOGIN, tmp_path / "p", with_person=with_person, launcher=launcher)
-    assert launched == [True, False]
+            fetching.fetch_balance(provider, LOGIN, tmp_path / "p", view=view, launcher=launcher)
+    assert launched == [tmp_path / "p"] * 2
+    assert fetching._launch_options()["headless"] is True
+
+
+@needs_browser
+def test_once_you_click_the_app_leaves_the_page_to_you(site, tmp_path, monkeypatch):
+    # Time to click before the app would type: from then on it types nothing, so a saved login
+    # that's out of date isn't sent behind your back.
+    monkeypatch.setattr(fetching, "FORM_SETTLE", 3)
+    bank, provider = site()
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+
+    def you(view):
+        type_login = you_sign_in(view)
+
+        def act(page):
+            if not view.status()["picture"]:
+                return
+            if not act.clicked:
+                act.clicked = True
+                view.send([{"kind": "click", "x": 1, "y": 1}])
+            else:
+                type_login(page)
+
+        act.clicked = False
+        return act
+
+    view = SignInView("fake")
+    balance = fetching.fetch_balance(
+        provider,
+        {"username": USERNAME, "password": "out of date"},
+        tmp_path / "profile",
+        view=view,
+        seed_cookies=cookies,
+        while_waiting=you(view),
+    )
+    assert balance == 52300
+    assert bank.logins == 1  # yours
+
+
+@needs_browser
+def test_you_can_scroll_the_page(site, tmp_path, monkeypatch):
+    monkeypatch.setattr(fetching, "SCROLL_EVERY", 999)  # the app doesn't scroll by itself here
+    bank, provider = site(shows="below")
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+
+    def you(view):
+        def scroll(page):
+            status = view.status()
+            if status["picture"] and page.url.endswith("/account"):
+                middle = {"x": status["width"] / 2, "y": status["height"] / 2}
+                view.send([{"kind": "scroll", **middle, "dx": 0, "dy": 1500}])
+
+        return scroll
+
+    balance, view = sign_in(provider, tmp_path / "profile", you=you, seed_cookies=cookies)
+    assert balance == 52300
+
+
+@needs_browser
+def test_a_sign_in_you_stop_ends_right_away(site, tmp_path):
+    bank, provider = site()
+
+    def you_stop(view):
+        return lambda page: view.stop()
+
+    with pytest.raises(fetching.NeedsPerson, match="You stopped the sign-in to fake"):
+        sign_in(provider, tmp_path / "profile", you=you_stop)
 
 
 @needs_browser
@@ -188,45 +282,49 @@ def test_the_login_is_typed_a_key_at_a_time(site, tmp_path):
     assert bank.logins == 1
 
 
-def you_sign_in(page):
-    """You, at the window, typing your login over whatever the site shows."""
-    box = page.locator("input[type=password]")
-    if box.count() and box.is_visible() and not box.input_value():
-        name = page.locator("input[name=username]")
-        if name.count() and name.is_visible() and not name.input_value():
-            name.press_sequentially(USERNAME)
-        box.press_sequentially(PASSWORD)
-        box.press("Enter")
+def you_sign_in(view):
+    """You, in the app's window, typing your login over whatever the site shows."""
+
+    def you(page):
+        if not view.status()["picture"]:
+            return
+        try:
+            box = page.locator("input[type=password]")
+            if box.count() and box.is_visible() and not box.input_value():
+                events = []
+                name = page.locator("input[name=username]")
+                if name.count() and name.is_visible() and not name.input_value():
+                    events += [click(name), {"kind": "text", "text": USERNAME}]
+                events += [click(box), {"kind": "text", "text": PASSWORD}, {"kind": "key", "key": "Enter"}]
+                view.send(events)
+        except Exception:  # the page is changing
+            pass
+
+    return you
 
 
 @needs_browser
 @pytest.mark.parametrize("type_login", [True, False])
-def test_a_login_you_fix_at_the_window_is_kept(site, tmp_path, type_login):
+def test_a_login_you_fix_while_signing_in_is_kept(site, tmp_path, type_login):
     bank, provider = site()
     bank.trusted.add("known-mac")
     cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
-    notes, kept = [], []
-
-    def you_after_the_note(page):
-        if notes:
-            you_sign_in(page)
+    kept = []
+    view = SignInView("fake")
+    you = you_sign_in(view)
 
     balance = fetching.fetch_balance(
         provider,
         {"username": USERNAME, "password": "old password"},
         tmp_path / "profile",
-        headless=True,
-        with_person=True,
+        view=view,
         type_login=type_login,
         seed_cookies=cookies,
-        while_waiting=you_after_the_note,
-        on_needs_you=notes.append,
+        while_waiting=lambda page: you(page) if view.note else None,
         on_new_login=kept.append,
     )
     assert balance == 52300
-    assert notes == [
-        "fake didn't take the saved login. Sign in in the fake window, and Award Wallet keeps the login that works."
-    ]
+    assert view.note == "fake didn't take the saved login. Sign in below, and Award Wallet keeps the login that works."
     assert kept == [{"username": USERNAME, "password": PASSWORD}]
     assert bank.logins == (2 if type_login else 1)  # the saved login is tried once at most
 
@@ -237,7 +335,7 @@ def test_a_login_that_already_worked_is_not_kept_again(site, tmp_path):
     bank.trusted.add("known-mac")
     cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
     kept = []
-    balance = fetch(provider, tmp_path / "profile", with_person=True, seed_cookies=cookies, on_new_login=kept.append)
+    balance, view = sign_in(provider, tmp_path / "profile", seed_cookies=cookies, on_new_login=kept.append)
     assert balance == 52300 and kept == []
 
 
@@ -265,7 +363,7 @@ def test_a_form_that_comes_back_with_a_message_is_left_to_you(site, tmp_path):
 def test_a_wrong_password_is_typed_only_once(site, tmp_path):
     bank, provider = site(clears_form_once=True)
     with pytest.raises(fetching.LoginRejected):
-        fetching.fetch_balance(provider, {"username": USERNAME, "password": "nope"}, tmp_path / "p", headless=True)
+        fetching.fetch_balance(provider, {"username": USERNAME, "password": "nope"}, tmp_path / "p")
     assert bank.logins == 2  # the one the site cleared, and one that it said was wrong
 
 
@@ -300,7 +398,7 @@ def test_the_sites_own_error_is_passed_on(site, tmp_path, monkeypatch):
     monkeypatch.setattr(fetching, "TROUBLE_GRACE", 1)
     bank, provider = site(shows="trouble")
     with pytest.raises(fetching.FetchProblem, match="fake says: “We can’t access your account information right now"):
-        fetch(provider, tmp_path / "profile", with_person=True, while_waiting=type_code)
+        sign_in(provider, tmp_path / "profile")
 
 
 @needs_browser
@@ -315,13 +413,13 @@ def test_a_page_without_the_balance_gives_up_with_a_screenshot(site, tmp_path, m
 
 
 @needs_browser
-def test_a_window_thats_up_for_you_waits_for_you(site, tmp_path, monkeypatch):
-    # You might be signing in on that very page: only your own time limit closes the window.
+def test_a_sign_in_waits_for_you(site, tmp_path, monkeypatch):
+    # You might be signing in on that very page: only your own time limit ends the sign-in.
     monkeypatch.setattr(fetching, "READ_TIMEOUT", 1)
     monkeypatch.setattr(fetching, "PERSON_TIMEOUT", 4)
     bank, provider = site(shows="empty")
-    with pytest.raises(fetching.NeedsPerson, match="timed out"):
-        fetch(provider, tmp_path / "profile", with_person=True, while_waiting=type_code)
+    with pytest.raises(fetching.NeedsPerson, match="The sign-in to fake timed out before it finished"):
+        sign_in(provider, tmp_path / "profile")
 
 
 @needs_browser
@@ -343,7 +441,6 @@ def test_wrong_password_is_reported(site, tmp_path):
             provider,
             {"username": USERNAME, "password": "nope"},
             tmp_path / "profile",
-            headless=True,
             screenshot_to=tmp_path / "shot.png",
         )
     assert (tmp_path / "shot.png").exists()
@@ -442,7 +539,7 @@ _PIXELS = """() => new Promise((done) => {
 @needs_browser
 def test_a_screenshot_blacks_out_what_was_typed(tmp_path):
     # Screenshots go in the Diagnostics folder, which is meant to be safe to send.
-    playwright, context = fetching.browser_launcher(tmp_path / "profile", headless=True)
+    playwright, context = fetching.browser_launcher(tmp_path / "profile")
     try:
         page = context.pages[0] if context.pages else context.new_page()
         box = "position:absolute;left:20px;width:200px;height:40px"

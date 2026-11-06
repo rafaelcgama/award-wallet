@@ -16,6 +16,7 @@ from award_wallet import fetching
 from award_wallet.models import BalanceSource, LoyaltyAccount, SyncStatus, utcnow
 from award_wallet.providers import get_provider
 from award_wallet.security.vault import Vault
+from award_wallet.sign_in_view import SignInView
 
 from . import accounts, balances
 
@@ -51,8 +52,8 @@ class Refresher:
         self._screenshots_dir = screenshots_dir
         self._jobs: queue.Queue[_Job] = queue.Queue()
         self._waiting: set[str] = set()
-        # What a site wants from you, by account, while its window is up for you.
-        self._notes: dict[str, str] = {}
+        # Sign-ins shown in the app's window, by account, from the click until they end.
+        self._views: dict[str, SignInView] = {}
         self._lock = threading.Lock()
         self._workers: list[threading.Thread] = []
 
@@ -62,13 +63,16 @@ class Refresher:
             return set(self._waiting)
 
     def needs_you(self) -> dict[str, str]:
-        """Accounts whose Chrome window is up for you, with a note saying what the site wants."""
+        """Accounts you're signing in to, with a note saying what the site wants from you."""
         with self._lock:
-            return dict(self._notes)
+            views = dict(self._views)
+        return {account_id: view.note for account_id, view in views.items() if view.is_open}
 
-    def _note(self, account_id: str, note: str) -> None:
+    def view(self, account_id: str) -> SignInView | None:
+        """The sign-in to this account that's open in the app's window, if there is one."""
         with self._lock:
-            self._notes[account_id] = note
+            view = self._views.get(account_id)
+        return view if view and view.is_open else None
 
     def refresh_all(self, db: Session, user_id: str) -> int:
         """Queue a quiet fetch of every program that can be fetched. Returns how many were queued.
@@ -85,9 +89,18 @@ class Refresher:
     def refresh_one(self, account: LoyaltyAccount) -> bool:
         return can_fetch(account) and self._enqueue(_Job(account.id, with_person=False))
 
-    def sign_in(self, account: LoyaltyAccount) -> bool:
-        """Open a visible window for this program so you can finish the sign-in."""
-        return can_fetch(account) and self._enqueue(_Job(account.id, with_person=True))
+    def sign_in(self, account: LoyaltyAccount) -> SignInView | None:
+        """Sign in to this program with you: the hidden Chrome that refreshes it signs in, and its
+        page shows in the app's window, where you finish what the site asks. None if the program
+        is being refreshed right now."""
+        if not can_fetch(account):
+            return None
+        view = SignInView(get_provider(account.provider).name)
+        return view if self._enqueue(_Job(account.id, with_person=True), view) else None
+
+    def stop_sign_in(self, account_id: str) -> None:
+        if view := self.view(account_id):
+            view.stop()
 
     def wait(self, timeout: float = 600) -> None:
         """Block until the queue is empty (for tests and the command line)."""
@@ -103,11 +116,13 @@ class Refresher:
         """Delete a program's Chrome profile: its cookies, and with them the site's memory of this Mac."""
         shutil.rmtree(self.browser_profile(account_id), ignore_errors=True)
 
-    def _enqueue(self, job: _Job) -> bool:
+    def _enqueue(self, job: _Job, view: SignInView | None = None) -> bool:
         with self._lock:
             if job.account_id in self._waiting:
                 return False
             self._waiting.add(job.account_id)
+            if view:
+                self._views[job.account_id] = view
             self._workers = [worker for worker in self._workers if worker.is_alive()]
             if len(self._workers) < MAX_PARALLEL:
                 worker = threading.Thread(target=self._work, name="award-wallet-refresh", daemon=True)
@@ -120,8 +135,9 @@ class Refresher:
         while True:
             job = self._jobs.get()
             started = time.monotonic()
+            done = False
             try:
-                self._run(job)
+                done = self._run(job)
             except Exception:
                 log.exception("Refreshing %s failed", job.account_id)
             else:
@@ -129,14 +145,17 @@ class Refresher:
             finally:
                 with self._lock:
                     self._waiting.discard(job.account_id)
-                    self._notes.pop(job.account_id, None)
+                    view = self._views.pop(job.account_id, None)
+                if view:
+                    view.end(done)
                 self._jobs.task_done()
 
-    def _run(self, job: _Job) -> None:
+    def _run(self, job: _Job) -> bool:
+        """Fetch one program's balance. Whether it was read."""
         with self._sessions() as db:
             account = db.get(LoyaltyAccount, job.account_id)
             if account is None or not can_fetch(account):
-                return
+                return False
             provider = get_provider(account.provider)
             credentials = accounts.read_credentials(self._vault, account) or {}
             screenshot = self._screenshots_dir / f"{provider.key}.png" if self._screenshots_dir else None
@@ -144,28 +163,34 @@ class Refresher:
             # Chrome profile once, so the site still knows this Mac.
             old_state = accounts.read_session_state(self._vault, account) or {}
 
-            # A login you signed in with at the window, after the site turned the saved one down.
+            # A login you signed in with, after the site turned the saved one down.
             learned: dict[str, str] = {}
+            rejected = account.sync_status == SyncStatus.LOGIN_REJECTED
+            with self._lock:
+                view = self._views.get(job.account_id) if job.with_person else None
             try:
                 balance = self._fetch(
                     provider,
                     credentials,
                     self.browser_profile(account.id),
-                    with_person=job.with_person,
-                    # The site turned the saved login down last time, so at the window you sign in
-                    # yourself instead of the app trying it again.
-                    type_login=not (job.with_person and account.sync_status == SyncStatus.LOGIN_REJECTED),
+                    view=view,
+                    # The site turned the saved login down last time, so you sign in yourself
+                    # instead of the app trying it again.
+                    type_login=not (view and rejected),
                     screenshot_to=screenshot,
                     seed_cookies=old_state.get("cookies"),
-                    on_needs_you=lambda note: self._note(job.account_id, note),
                     on_new_login=learned.update,
                 )
             except Exception as exc:
                 status, message = self._outcome(provider, exc)
+                if view and rejected and status == SyncStatus.NEEDS_LOGIN:
+                    # A sign-in you didn't finish leaves the saved login turned down, so refreshes
+                    # still don't try it: a wrong password tried again could lock the account.
+                    status = SyncStatus.LOGIN_REJECTED
                 if not isinstance(exc, fetching.ChromeMissing):
                     account.session_state_encrypted = None
                 self._finish(db, account, status, message)
-                return
+                return False
 
             if learned:
                 accounts.remember_login(self._vault, account, learned)
@@ -174,6 +199,7 @@ class Refresher:
             account.last_synced_at = utcnow()
             self._finish(db, account, SyncStatus.OK, None, commit=False)
             balances.record_balance(db, account, balance=balance, source=BalanceSource.SYNC)
+            return True
 
     @staticmethod
     def _outcome(provider, exc: Exception) -> tuple[SyncStatus, str]:
