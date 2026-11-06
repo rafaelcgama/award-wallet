@@ -413,13 +413,36 @@ def test_a_page_without_the_balance_gives_up_with_a_screenshot(site, tmp_path, m
 
 
 @needs_browser
-def test_a_sign_in_waits_for_you(site, tmp_path, monkeypatch):
-    # You might be signing in on that very page: only your own time limit ends the sign-in.
-    monkeypatch.setattr(fetching, "READ_TIMEOUT", 1)
-    monkeypatch.setattr(fetching, "PERSON_TIMEOUT", 4)
+def test_a_changed_page_reached_late_still_says_the_site_changed(site, tmp_path, monkeypatch):
+    # The refresh runs out of time while it's still looking on the balance page. It's signed in, so
+    # the page changed: clicking Sign in wouldn't help.
+    monkeypatch.setattr(fetching, "QUIET_TIMEOUT", 12)
+    monkeypatch.setattr(fetching, "READ_TIMEOUT", 30)
     bank, provider = site(shows="empty")
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+    with pytest.raises(fetching.FetchProblem, match="Couldn't find your miles on fake's page") as problem:
+        fetch(provider, tmp_path / "profile", seed_cookies=cookies, screenshot_to=tmp_path / "shot.png")
+    assert not isinstance(problem.value, fetching.NeedsPerson)
+    assert (tmp_path / "shot.png").exists()
+
+
+@needs_browser
+def test_a_sign_in_waits_for_you(site, tmp_path, monkeypatch):
+    # You might be signing in on that very page: only your own time limit ends the sign-in. The
+    # note says the balance can't be found, so you know to click Stop.
+    monkeypatch.setattr(fetching, "READ_TIMEOUT", 1)
+    monkeypatch.setattr(fetching, "PERSON_TIMEOUT", 8)
+    bank, provider = site(shows="empty")
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+    view = SignInView(provider.name)
     with pytest.raises(fetching.NeedsPerson, match="The sign-in to fake timed out before it finished"):
-        sign_in(provider, tmp_path / "profile")
+        fetch(provider, tmp_path / "profile", view=view, seed_cookies=cookies)
+    assert view.note == (
+        "Award Wallet can't find your miles on this page. fake may have changed it: click Stop, and a "
+        "screenshot is saved for checking."
+    )
 
 
 @needs_browser

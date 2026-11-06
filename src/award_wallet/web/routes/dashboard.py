@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
+from award_wallet.providers import all_providers
 from award_wallet.services.dashboard import summarize_accounts
 from award_wallet.services.refresh import can_fetch
 
@@ -31,8 +32,16 @@ def dashboard(request: Request, db: DbSession, user: CurrentUser):
             "available_update": getattr(state, "available_update", None),
             "can_install": can_self_update(request),
             "runs_from": outside_applications(request),
+            "program_names": _either([provider.name for provider in all_providers()]),
         },
     )
+
+
+def _either(names: list[str]) -> str:
+    """Names joined the way a sentence lists them: "A, B or C"."""
+    if len(names) < 2:
+        return "".join(names)
+    return f"{', '.join(names[:-1])} or {names[-1]}"
 
 
 @router.post("/refresh", dependencies=[CsrfProtected])
