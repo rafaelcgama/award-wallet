@@ -4,6 +4,15 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.11.4] - 2026-11-06
+
+### Fixed
+- Installing an update no longer makes macOS say Award Wallet "was prevented from modifying apps
+  on your Mac". The installer used to clear the "downloaded from the internet" mark from the new
+  app once it was in Applications, which macOS counts as one app changing another. It now copies
+  the app without that mark instead. The notice still shows once, while updating to this version,
+  because the version you're leaving does that install.
+
 ## [0.11.3] - 2026-11-06
 
 ### Changed

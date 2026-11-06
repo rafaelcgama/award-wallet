@@ -362,10 +362,14 @@ def test_web_version_only_links_to_the_download(settings, monkeypatch):
 _TOOLS = {
     # Mounting the .dmg shows the app that was put next to it.
     "hdiutil": 'if [ "$1" = attach ]; then cp -R "$7.contents/." "$6/"; else rm -rf "$3"; fi',
-    "ditto": '[ -f "$STUB_DIR/ditto-fails" ] && exit 1; cp -R "$1" "$2"',
+    "ditto": (
+        '[ -f "$STUB_DIR/ditto-fails" ] && exit 1; '
+        'while [ "${1#-}" != "$1" ]; do echo "$1" >> "$STUB_DIR/ditto-options"; shift; done; '
+        'cp -R "$1" "$2"'
+    ),
     # Like moving an app out of a folder you're not allowed to change.
     "mv": '[ -f "$STUB_DIR/mv-fails" ] && exit 1; exec /bin/mv "$@"',
-    "xattr": "exit 0",
+    "xattr": 'echo "$@" >> "$STUB_DIR/xattr-ran"',
     "open": 'echo "$@" >> "$STUB_DIR/opened"',
 }
 
@@ -404,6 +408,20 @@ def test_installer_replaces_the_app_from_the_dmg_and_reopens_it(tmp_path):
     assert (app / "Contents" / "version").read_text() == "0.6.0"
     assert not (tmp_path / "Applications" / "Award Wallet.app.old").exists() and not dmg.exists()
     assert opened == [str(app)]
+
+
+def test_installer_never_changes_the_new_app_once_it_is_in_place(tmp_path):
+    # macOS blocks one app changing another that's already in place, like removing the internet
+    # mark from its files, and says Award Wallet "was prevented from modifying apps on your Mac".
+    # So the copy is made without the mark instead.
+    app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
+    dmg = tmp_path / "update.dmg"
+    dmg.write_bytes(b"dmg")
+    _app(tmp_path / "update.dmg.contents" / "Award Wallet.app", "0.6.0")
+    _run(updates.installer_script(app=app, running=app, pid=_quit_pid(), dmg=dmg), tmp_path)
+    assert (app / "Contents" / "version").read_text() == "0.6.0"
+    assert (tmp_path / "ditto-options").read_text().split() == ["--noqtn"]
+    assert not (tmp_path / "xattr-ran").exists()
 
 
 def test_installer_keeps_the_old_app_when_the_copy_fails(tmp_path):
