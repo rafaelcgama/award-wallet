@@ -2,11 +2,12 @@
 
 import logging
 import queue
+import re
 import shutil
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +25,8 @@ log = logging.getLogger(__name__)
 
 # Programs fetched at the same time. Each one runs its own Chrome, so keep it small.
 MAX_PARALLEL = 3
+# What an account's id, and so its Chrome profile's folder name, looks like.
+_ACCOUNT_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,10 @@ class Refresher:
         self._waiting: set[str] = set()
         # Sign-ins shown in the app's window, by account, from the click until they end.
         self._views: dict[str, SignInView] = {}
+        # Chrome profiles to delete once the fetch using them ends.
+        self._forget: set[str] = set()
+        # Accounts whose login changed during a fetch, to fetch again with the new one.
+        self._again: set[str] = set()
         self._lock = threading.Lock()
         self._workers: list[threading.Thread] = []
 
@@ -103,8 +110,12 @@ class Refresher:
             view.stop()
 
     def wait(self, timeout: float = 600) -> None:
-        """Block until the queue is empty (for tests and the command line)."""
-        self._jobs.join()
+        """Block until the queue is empty (for tests). TimeoutError if it isn't by then."""
+        deadline = time.monotonic() + timeout
+        with self._jobs.all_tasks_done:
+            while self._jobs.unfinished_tasks:
+                if not self._jobs.all_tasks_done.wait(deadline - time.monotonic()):
+                    raise TimeoutError(f"Refreshes still running after {timeout:g}s")
 
     def browser_profile(self, account_id: str) -> Path:
         # An account's id names a folder inside the Browser folder, never one outside it.
@@ -113,8 +124,31 @@ class Refresher:
         return self._browser_dir / account_id
 
     def forget_browser(self, account_id: str) -> None:
-        """Delete a program's Chrome profile: its cookies, and with them the site's memory of this Mac."""
-        shutil.rmtree(self.browser_profile(account_id), ignore_errors=True)
+        """Delete a program's Chrome profile: its cookies, and with them the site's memory of this
+        Mac. If a fetch is using it, a sign-in is stopped and the profile goes when the fetch ends:
+        deleted from under a running Chrome, it would be written again."""
+        profile = self.browser_profile(account_id)
+        with self._lock:
+            if account_id not in self._waiting:
+                shutil.rmtree(profile, ignore_errors=True)
+                return
+            self._forget.add(account_id)
+            view = self._views.get(account_id)
+        if view:
+            view.stop()
+
+    def forget_other_browsers(self, account_ids: Iterable[str]) -> None:
+        """Delete Chrome profiles no program owns anymore, like one removed while the app quit
+        before its fetch ended."""
+        keep = set(account_ids)
+        if not self._browser_dir.is_dir():
+            return
+        for folder in self._browser_dir.iterdir():
+            if folder.is_dir() and _ACCOUNT_ID.fullmatch(folder.name) and folder.name not in keep:
+                with self._lock:
+                    if folder.name not in self._waiting:
+                        shutil.rmtree(folder, ignore_errors=True)
+                        log.info("Deleted a Chrome profile no program owns")
 
     def _enqueue(self, job: _Job, view: SignInView | None = None) -> bool:
         with self._lock:
@@ -146,52 +180,74 @@ class Refresher:
                 with self._lock:
                     self._waiting.discard(job.account_id)
                     view = self._views.pop(job.account_id, None)
+                    self._forget_if_asked(job.account_id)
+                    again = job.account_id in self._again
+                    self._again.discard(job.account_id)
                 if view:
                     view.end(done)
+                if again:
+                    self._enqueue(_Job(job.account_id, with_person=False))
                 self._jobs.task_done()
+
+    def _forget_if_asked(self, account_id: str) -> None:
+        """With the lock held, so no fetch starts on the profile meanwhile."""
+        if account_id in self._forget:
+            self._forget.discard(account_id)
+            shutil.rmtree(self.browser_profile(account_id), ignore_errors=True)
 
     def _run(self, job: _Job) -> bool:
         """Fetch one program's balance. Whether it was read."""
+        with self._lock:
+            # Asked to forget the profile before this fetch started: it starts from a new one.
+            self._forget_if_asked(job.account_id)
+            view = self._views.get(job.account_id) if job.with_person else None
+        # The account is read here and saved after the fetch, which can take minutes while you
+        # sign in, so the fetch never holds it: a login you change meanwhile isn't overwritten.
         with self._sessions() as db:
             account = db.get(LoyaltyAccount, job.account_id)
             if account is None or not can_fetch(account):
                 return False
             provider = get_provider(account.provider)
+            login = account.credentials_encrypted
             credentials = accounts.read_credentials(self._vault, account) or {}
-            screenshot = self._screenshots_dir / f"{provider.key}.png" if self._screenshots_dir else None
             # Versions before 0.5 kept the site's cookies in the database: carry them into the new
             # Chrome profile once, so the site still knows this Mac.
             old_state = accounts.read_session_state(self._vault, account) or {}
-
-            # A login you signed in with, after the site turned the saved one down.
-            learned: dict[str, str] = {}
             rejected = account.sync_status == SyncStatus.LOGIN_REJECTED
-            with self._lock:
-                view = self._views.get(job.account_id) if job.with_person else None
-            try:
-                balance = self._fetch(
-                    provider,
-                    credentials,
-                    self.browser_profile(account.id),
-                    view=view,
-                    # The site turned the saved login down last time, so you sign in yourself
-                    # instead of the app trying it again.
-                    type_login=not (view and rejected),
-                    screenshot_to=screenshot,
-                    seed_cookies=old_state.get("cookies"),
-                    on_new_login=learned.update,
-                )
-            except Exception as exc:
-                status, message = self._outcome(provider, exc)
-                if view and rejected and status == SyncStatus.NEEDS_LOGIN:
-                    # A sign-in you didn't finish leaves the saved login turned down, so refreshes
-                    # still don't try it: a wrong password tried again could lock the account.
-                    status = SyncStatus.LOGIN_REJECTED
-                if not isinstance(exc, fetching.ChromeMissing):
-                    account.session_state_encrypted = None
-                self._finish(db, account, status, message)
-                return False
+        screenshot = self._screenshots_dir / f"{provider.key}.png" if self._screenshots_dir else None
 
+        # A login you signed in with, after the site turned the saved one down.
+        learned: dict[str, str] = {}
+        try:
+            balance = self._fetch(
+                provider,
+                credentials,
+                self.browser_profile(job.account_id),
+                view=view,
+                # The site turned the saved login down last time, so you sign in yourself
+                # instead of the app trying it again.
+                type_login=not (view and rejected),
+                screenshot_to=screenshot,
+                seed_cookies=old_state.get("cookies"),
+                on_new_login=learned.update,
+            )
+        except Exception as exc:
+            status, message = self._outcome(provider, exc)
+            if view and rejected and status == SyncStatus.NEEDS_LOGIN:
+                # A sign-in you didn't finish leaves the saved login turned down, so refreshes
+                # still don't try it: a wrong password tried again could lock the account.
+                status = SyncStatus.LOGIN_REJECTED
+            with self._sessions() as db:
+                if account := self._unchanged(db, job.account_id, login, provider.key):
+                    if not isinstance(exc, fetching.ChromeMissing):
+                        account.session_state_encrypted = None
+                    self._finish(db, account, status, message)
+            return False
+
+        with self._sessions() as db:
+            account = self._unchanged(db, job.account_id, login, provider.key)
+            if account is None:
+                return False
             if learned:
                 accounts.remember_login(self._vault, account, learned)
                 log.info("%s: kept the login you signed in with", provider.key)
@@ -205,6 +261,19 @@ class Refresher:
             self._finish(db, account, SyncStatus.OK, None, commit=False)
             balances.record_balance(db, account, balance=balance, source=BalanceSource.SYNC)
             return True
+
+    def _unchanged(self, db: Session, account_id: str, login: bytes | None, key: str) -> LoyaltyAccount | None:
+        """The account, to save what a fetch found, unless it was removed or its login changed
+        while the fetch ran. Then the result belongs to a login that's gone, and a new login is
+        fetched again."""
+        account = db.get(LoyaltyAccount, account_id)
+        if account is not None and account.credentials_encrypted == login:
+            return account
+        log.info("%s changed during its refresh, so what the refresh found was dropped", key)
+        if account is not None and can_fetch(account):
+            with self._lock:
+                self._again.add(account_id)
+        return None
 
     @staticmethod
     def _outcome(provider, exc: Exception) -> tuple[SyncStatus, str]:

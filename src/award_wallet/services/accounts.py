@@ -21,6 +21,11 @@ def list_accounts(db: Session, user_id: str) -> list[LoyaltyAccount]:
     return list(db.scalars(query))
 
 
+def all_account_ids(db: Session) -> set[str]:
+    """Every program's id, whoever it belongs to."""
+    return set(db.scalars(select(LoyaltyAccount.id)))
+
+
 def get_account(db: Session, user_id: str, account_id: str) -> LoyaltyAccount:
     account = db.scalar(
         select(LoyaltyAccount).where(LoyaltyAccount.id == account_id, LoyaltyAccount.user_id == user_id)

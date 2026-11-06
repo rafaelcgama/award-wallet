@@ -651,3 +651,130 @@ def test_a_balance_that_falls_by_more_than_half_waits_for_you(settings):
         refresh(1000)
         post_form(window, f"{page}/balance", {"balance": "11,500"}, token_from=page)  # entered by hand
         assert state() == (SyncStatus.OK, None, 11500)
+
+
+def test_removing_a_program_while_it_refreshes(settings, caplog):
+    sites = FakeSites()
+    running, let_go = threading.Event(), threading.Event()
+
+    def chase(view):
+        sites.profiles[-1].mkdir(parents=True)  # Chrome writes its profile while it runs
+        running.set()
+        let_go.wait(10)
+        return 80000
+
+    sites.answers["chase"] = chase
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        path = link_with_login(window, "chase").url.path
+        assert running.wait(10)
+        profile = sites.profiles[-1]
+        post_form(window, path + "/delete", {}, token_from=path)
+        assert profile.exists()  # still Chrome's while it runs
+        let_go.set()
+        app.state.refresher.wait(10)
+        assert not profile.exists()
+        with app.state.sessionmaker() as db:
+            assert db.query(LoyaltyAccount).count() == db.query(BalanceSnapshot).count() == 0
+    assert not [record for record in caplog.records if record.levelname == "ERROR"]
+
+
+def test_removing_a_program_stops_its_sign_in(settings):
+    sites = FakeSites()
+    shown, stopped = threading.Event(), threading.Event()
+
+    def chase(view):
+        sites.profiles[-1].mkdir(parents=True, exist_ok=True)
+        view.show(PICTURE, 1200, 800)
+        shown.set()
+        if until(lambda: view.stopped):
+            stopped.set()
+        raise fetching.NeedsPerson("You stopped the sign-in to Chase. Click Sign in to try again.")
+
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        sites.answers["chase"] = fetching.NeedsPerson("Chase wants to confirm it's you. Click Sign in.")
+        path = link_with_login(window, "chase").url.path
+        app.state.refresher.wait(10)
+        sites.answers["chase"] = chase
+        post_form(window, path + "/sign-in", {}, token_from=path)
+        assert shown.wait(10)
+        post_form(window, path + "/delete", {}, token_from=path)
+        app.state.refresher.wait(10)
+        assert stopped.is_set()
+        assert not sites.profiles[-1].exists()
+
+
+def test_a_login_saved_during_a_refresh_wins(settings):
+    # The refresh that was running belongs to the old login: what it found is dropped, and the
+    # new login is fetched right after, in a new Chrome profile since the username changed.
+    sites = FakeSites()
+    running, let_go = threading.Event(), threading.Event()
+    profile_was_there = []
+
+    def chase(view, on_new_login):
+        profile = sites.profiles[-1]
+        profile_was_there.append(profile.exists())
+        if len(sites.calls) > 1:
+            return 222
+        profile.mkdir(parents=True)
+        running.set()
+        let_go.wait(10)
+        on_new_login({"username": "me", "password": "learned"})
+        return 111
+
+    sites.answers["chase"] = chase
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        path = link_with_login(window, "chase").url.path
+        assert running.wait(10)
+        new_login = {"credential_username": "someone-else", "credential_password": "new"}
+        post_form(window, path + "/login", new_login, token_from=path)
+        let_go.set()
+        app.state.refresher.wait(10)
+        assert [login["username"] for login in sites.logins] == ["me", "someone-else"]
+        assert profile_was_there == [False, False]
+        with app.state.sessionmaker() as db:
+            account = db.query(LoyaltyAccount).one()
+            assert accounts.read_credentials(app.state.vault, account) == {
+                "username": "someone-else",
+                "password": "new",
+            }
+            assert [snapshot.balance for snapshot in account.snapshots] == [222]
+
+
+def test_chrome_profiles_no_program_owns_are_deleted_when_the_app_opens(settings):
+    sites = FakeSites()
+    with TestClient(open_app(settings, sites), base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        link_with_login(window, "chase")
+        window.app.state.refresher.wait(10)
+    kept = sites.profiles[-1]
+    kept.mkdir(parents=True, exist_ok=True)
+    left_behind = kept.parent / "0b5c7a52-2d0e-4c1a-9a51-6b8f4f5e2c11"
+    left_behind.mkdir()
+    not_a_profile = kept.parent / "Notes"
+    not_a_profile.mkdir()
+
+    with TestClient(open_app(settings, sites), base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")  # the next launch
+        window.app.state.refresher.wait(10)
+    assert kept.exists() and not_a_profile.exists()
+    assert not left_behind.exists()
+
+
+def test_waiting_for_refreshes_gives_up_at_its_time_limit(settings):
+    sites = FakeSites()
+    let_go = threading.Event()
+    sites.answers["chase"] = lambda view: let_go.wait(10) and 1000
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        link_with_login(window, "chase")
+        with pytest.raises(TimeoutError):
+            app.state.refresher.wait(0.2)
+        let_go.set()
+        app.state.refresher.wait(10)
