@@ -197,6 +197,11 @@ class Refresher:
                 log.info("%s: kept the login you signed in with", provider.key)
             account.session_state_encrypted = None
             account.last_synced_at = utcnow()
+            if balances.held_back_from(db, account, balance) is not None:
+                log.info("%s: the balance fell by more than half, so it waits for you", provider.key)
+                account.held_balance = balance
+                self._finish(db, account, SyncStatus.CHECK_BALANCE, None)
+                return True
             self._finish(db, account, SyncStatus.OK, None, commit=False)
             balances.record_balance(db, account, balance=balance, source=BalanceSource.SYNC)
             return True

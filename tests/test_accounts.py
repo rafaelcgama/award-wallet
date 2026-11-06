@@ -290,3 +290,15 @@ def test_refreshes_keep_the_expirations_you_entered(client, db):
     )
     balances.record_balance(db, account, balance=500, source=BalanceSource.MANUAL, captured_at=noon)
     assert refresh(700, noon) == []
+
+
+def test_only_a_big_fall_is_held_back(client, db):
+    account = db.get(LoyaltyAccount, link(client, "united"))
+    assert balances.held_back_from(db, account, 0) is None  # nothing to compare with yet
+    balances.record_balance(db, account, balance=80000, source=BalanceSource.SYNC)
+    assert balances.held_back_from(db, account, 39999) == 80000
+    assert balances.held_back_from(db, account, 40000) is None  # half is fine
+    assert balances.held_back_from(db, account, 120000) is None
+    balances.record_balance(db, account, balance=1500, source=BalanceSource.MANUAL)
+    assert balances.held_back_from(db, account, 600) is None  # less than 1,000 fewer
+    assert balances.held_back_from(db, account, 0) == 1500

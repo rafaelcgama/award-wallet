@@ -85,6 +85,10 @@ If something goes wrong:
   **Sign in** and sign in yourself on the site's page, and the app keeps the login that works; or
   save it again. The app never retries a rejected login by itself, so your account doesn't get
   locked.
+- **Check the balance** means a refresh read less than half of what the program had, and at
+  least 1,000 fewer. That could be points you used, or some other number on the site's page, so it
+  stays out of the history until you say: the program's page offers to keep the new balance or the
+  one before. If you didn't use them, look at your account on the program's site.
 - **History** keeps each change in your balance with its date, one entry a day at most, so you can
   see when points came in or went out.
 - **Enter a balance by hand** on a program's page when you didn't save a login for it, or to add

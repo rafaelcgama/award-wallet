@@ -86,6 +86,16 @@ def enter_balance(
     return RedirectResponse(f"/accounts/{account.id}", status_code=303)
 
 
+@router.post("/{account_id}/held", dependencies=[CsrfProtected])
+def settle_held_balance(request: Request, db: DbSession, user: CurrentUser, account_id: str, form: PostedForm):
+    """Your answer about a balance that fell by more than half: keep it, or the one before."""
+    account = accounts.get_account(db, user.id, account_id)
+    keep = form.get("keep") == "new"
+    balances.settle_held_balance(db, account, keep=keep)
+    flash(request, "New balance kept." if keep else "Previous balance kept.")
+    return RedirectResponse(f"/accounts/{account.id}", status_code=303)
+
+
 @router.post("/{account_id}/login", dependencies=[CsrfProtected])
 def update_login(
     request: Request,

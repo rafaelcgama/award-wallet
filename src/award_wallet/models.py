@@ -46,6 +46,7 @@ class SyncStatus(StrEnum):
     NEEDS_LOGIN = "needs_login"  # the site wants a security code, and nobody entered it
     LOGIN_REJECTED = "login_rejected"  # the site said the saved username or password is wrong
     ERROR = "error"
+    CHECK_BALANCE = "check_balance"  # a refresh read far less than before, and it waits for you
 
 
 class BalanceSource(StrEnum):
@@ -89,6 +90,9 @@ class LoyaltyAccount(Base):
     sync_status: Mapped[str] = mapped_column(String(20), default=SyncStatus.PENDING)
     sync_message: Mapped[str | None] = mapped_column(Text)
     last_synced_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # A balance a refresh read that fell by more than half: it stays out of the history until you
+    # say whether it's right.
+    held_balance: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
