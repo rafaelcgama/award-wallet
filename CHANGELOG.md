@@ -4,6 +4,23 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-06
+
+### Changed
+- **Sign in** happens inside Award Wallet. The site's page shows in the app's window, where you
+  click and type like in a browser to finish what the site asks, like a code by text, and
+  **Stop** ends it. No Chrome window opens anymore, for anything.
+- Sign in now uses the same hidden Chrome as the refreshes. Capital One trusted the Chrome window
+  that Sign in used to open but treated the hidden one as a new device, so every refresh after a
+  sign-in asked for a code again. Confirming once on the page inside the app teaches Capital One
+  the browser that does the refreshes.
+- Once you click or type on the site's page, the app types nothing more there: the page is yours.
+  A sign-in waits five minutes from your last click or key before it gives up.
+
+### Fixed
+- A sign-in you don't finish after a site turned down the saved login keeps it turned down, so a
+  refresh never tries that password again.
+
 ## [0.7.0] - 2026-11-06
 
 ### Changed

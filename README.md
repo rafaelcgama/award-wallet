@@ -30,12 +30,15 @@ the app uses to sign in to the programs' websites.
   **Refresh now** button does it on demand. Chrome works invisibly, with no window, tab or Dock
   icon, and types the saved login one key at a time, like a person.
 - **Needs your sign-in** means a site wants something only you can give, like a code by text,
-  usually only the first time. Click **Sign in** on the program: a Chrome window opens for just
-  that, the program shows **Waiting for you** with a note saying what the site wants, and from
-  then on refreshes run out of sight again. Nothing opens unless you click.
+  usually only the first time. Click **Sign in** on the program: the site's page shows right in
+  Award Wallet, with a note saying what the site wants. The app types your saved login; you click
+  and type on the page like in a browser to finish, like entering the code. It's the same hidden
+  Chrome that does the refreshes, so the site gets to know that browser, and from then on
+  refreshes run out of sight again. **Stop** ends the sign-in; nothing else opens, ever.
 - **Check your login** means the site turned down the saved username or password. Click
-  **Sign in** and sign in yourself in the window, and the app keeps the login that works; or save
-  it again. The app never retries a rejected login by itself, so your account doesn't get locked.
+  **Sign in** and sign in yourself on the site's page, and the app keeps the login that works; or
+  save it again. The app never retries a rejected login by itself, so your account doesn't get
+  locked.
 - **History** keeps each change in your balance with its date, one entry a day at most, so you can
   see when points came in or went out.
 
@@ -75,6 +78,9 @@ To uninstall, drag the app to the Trash; to remove your data too, delete that fo
   carries a token, and requests from other websites are turned away.
 - The pages run only the app's own scripts, can't be shown inside another site and aren't kept on
   disk.
+- While you sign in, the pictures of the site's page stay in the app's memory and are gone when
+  the sign-in ends. Only the app's own window can see them, and only clicks, scrolls, keys and
+  text reach the site's page from it, each one checked first. Nothing you type there is logged.
 - Updates come only from this repository's releases on GitHub, over HTTPS, and must match the
   SHA-256 GitHub lists for them, or nothing is installed.
 
@@ -88,6 +94,7 @@ balances. PyInstaller packages it as a .app.
 src/award_wallet/
   desktop.py     the app: window, menus, data folder, log file
   fetching.py    signs in with Chrome, in each program's own profile, and reads a balance
+  sign_in_view.py  carries a sign-in's page to the window, and your clicks and keys back
   providers/     one module per program: where its balance page is and how to read it
   services/      accounts, balances, background refresh
   updates.py     Check for Updates, one-click install, Move to Applications

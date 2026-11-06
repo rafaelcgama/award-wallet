@@ -40,7 +40,8 @@
   <div class="fetch-actions">
     {% if working %}
     {% if account.id in needs_you %}
-    <span class="meta-warn">{{ needs_you[account.id] }}</span>
+    <a class="button" href="/accounts/{{ account.id }}/sign-in">Continue signing in</a>
+    <span class="meta-warn">Waiting for you to finish signing in to {{ provider.name }}.</span>
     {% else %}
     <span class="muted">Fetching your {{ provider.unit }} from {{ provider.name }}…</span>
     {% endif %}
@@ -55,7 +56,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit" class="button">Sign in to {{ provider.name }}</button>
     </form>
-    <span class="muted small">Opens {{ provider.name }} in a Chrome window and fills in your login. Finish what {{ provider.name }} asks for, like a security code; after that, Award Wallet fetches your balance by itself, out of sight.</span>
+    <span class="muted small">Shows {{ provider.name }}'s sign-in here in Award Wallet and types your saved login. Finish what {{ provider.name }} asks for, like a security code; after that, Award Wallet fetches your balance by itself, out of sight.</span>
     {% endif %}
   </div>
   {% endif %}

@@ -1,8 +1,9 @@
+import json
 from datetime import date
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Form, HTTPException, Request, Response
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
 
@@ -10,11 +11,17 @@ from award_wallet.models import BalanceSource, LoyaltyAccount, User
 from award_wallet.providers import Expiration, Provider, UnknownProvider, all_providers, get_provider
 from award_wallet.services import InvalidInput, accounts, balances
 from award_wallet.services.dashboard import checked_at
+from award_wallet.services.refresh import can_fetch
 
 from ..deps import CsrfProtected, CurrentUser, DbSession, PostedForm, VaultDep
 from ..templating import flash, templates
 
 router = APIRouter(prefix="/accounts")
+
+# How long the sign-in page's question "anything new?" waits for an answer, in seconds.
+STATUS_WAIT = 10
+# The most a batch of clicks and keys from the sign-in page may take up, in characters.
+MAX_INPUT = 20_000
 
 
 @router.get("/new")
@@ -112,11 +119,83 @@ def update_login(
 
 @router.post("/{account_id}/sign-in", dependencies=[CsrfProtected])
 def sign_in(request: Request, db: DbSession, user: CurrentUser, account_id: str, form: PostedForm):
+    """Start signing in, shown in the window: the program's page from the hidden Chrome that
+    refreshes it, where you finish what the site asks for."""
     account = accounts.get_account(db, user.id, account_id)
-    _start_sign_in(request, account)
-    # From a card on the dashboard, stay on the dashboard.
-    back = "/" if form.get("back") == "dashboard" else f"/accounts/{account.id}"
-    return RedirectResponse(back, status_code=303)
+    # From a card on the dashboard, the dashboard is where you go back to.
+    from_dashboard = form.get("back") == "dashboard"
+    refresher = request.app.state.refresher
+    if not (request.app.state.settings.auto_fetch and can_fetch(account)):
+        return RedirectResponse(_back(account, from_dashboard), status_code=303)
+    if refresher.view(account.id) is None and refresher.sign_in(account) is None:
+        flash(request, f"{get_provider(account.provider).name} is refreshing right now. Click Sign in once it's done.")
+        return RedirectResponse(_back(account, from_dashboard), status_code=303)
+    page = f"/accounts/{account.id}/sign-in" + ("?back=dashboard" if from_dashboard else "")
+    return RedirectResponse(page, status_code=303)
+
+
+@router.get("/{account_id}/sign-in")
+def sign_in_page(request: Request, db: DbSession, user: CurrentUser, account_id: str, back: str = ""):
+    account = accounts.get_account(db, user.id, account_id)
+    view = request.app.state.refresher.view(account.id)
+    if view is None:
+        return RedirectResponse(f"/accounts/{account.id}", status_code=303)
+    context = {
+        "user": user,
+        "account": account,
+        "provider": get_provider(account.provider),
+        "note": view.note,
+        "from_dashboard": back == "dashboard",
+        "back": _back(account, back == "dashboard"),
+    }
+    return templates.TemplateResponse(request, "sign_in.html", context)
+
+
+@router.get("/{account_id}/sign-in/status")
+def sign_in_status(request: Request, db: DbSession, user: CurrentUser, account_id: str, after: int = -1):
+    """What the sign-in shows now, once there's a newer picture of the page than `after`."""
+    account = accounts.get_account(db, user.id, account_id)
+    db.close()  # nothing more from the database while this waits
+    view = request.app.state.refresher.view(account.id)
+    if view is None:
+        return JSONResponse({"state": "gone"})
+    return JSONResponse(view.status(after=after, timeout=STATUS_WAIT))
+
+
+@router.get("/{account_id}/sign-in/picture")
+def sign_in_picture(request: Request, db: DbSession, user: CurrentUser, account_id: str):
+    """The newest picture of the page you're signing in on."""
+    account = accounts.get_account(db, user.id, account_id)
+    view = request.app.state.refresher.view(account.id)
+    picture = view.picture() if view else None
+    if picture is None:
+        raise HTTPException(status_code=404, detail="Nothing to show.")
+    return Response(picture, media_type="image/jpeg")
+
+
+@router.post("/{account_id}/sign-in/input", dependencies=[CsrfProtected])
+def sign_in_input(
+    request: Request, db: DbSession, user: CurrentUser, account_id: str, events: Annotated[str, Form()] = ""
+):
+    """Your clicks and keys on the picture of the page, for the page itself."""
+    account = accounts.get_account(db, user.id, account_id)
+    view = request.app.state.refresher.view(account.id)
+    if view is None:
+        raise HTTPException(status_code=409, detail="This sign-in has ended.")
+    try:
+        if len(events) > MAX_INPUT:
+            raise ValueError("Too much at once.")
+        view.send(json.loads(events))
+    except ValueError as exc:  # json's own errors are ValueErrors too
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return Response(status_code=204)
+
+
+@router.post("/{account_id}/sign-in/stop", dependencies=[CsrfProtected])
+def stop_sign_in(request: Request, db: DbSession, user: CurrentUser, account_id: str, form: PostedForm):
+    account = accounts.get_account(db, user.id, account_id)
+    request.app.state.refresher.stop_sign_in(account.id)
+    return RedirectResponse(_back(account, form.get("back") == "dashboard"), status_code=303)
 
 
 @router.post("/{account_id}/refresh", dependencies=[CsrfProtected])
@@ -128,17 +207,14 @@ def refresh(request: Request, db: DbSession, user: CurrentUser, account_id: str)
 
 
 def _fetch_out_of_sight(request: Request, account: LoyaltyAccount) -> None:
-    """Sign in and fetch the balance with no window. If the site wants you (a code, say), the
-    program shows a Sign in button: a window opens only when you click it."""
+    """Sign in and fetch the balance, out of sight. If the site wants you (a code, say), the
+    program shows a Sign in button, which shows you the site's page in the app's window."""
     if request.app.state.settings.auto_fetch:
         request.app.state.refresher.refresh_one(account)
 
 
-def _start_sign_in(request: Request, account: LoyaltyAccount) -> None:
-    """Open the program's site in a Chrome window to sign in and fetch the balance."""
-    if request.app.state.settings.auto_fetch and request.app.state.refresher.sign_in(account):
-        name = get_provider(account.provider).name
-        flash(request, f"A Chrome window is opening to sign in to {name}. Finish there what {name} asks for.")
+def _back(account: LoyaltyAccount, from_dashboard: bool) -> str:
+    return "/" if from_dashboard else f"/accounts/{account.id}"
 
 
 @router.post("/{account_id}/login/remove", dependencies=[CsrfProtected])

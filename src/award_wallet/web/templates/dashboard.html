@@ -65,7 +65,8 @@
     <div class="balance balance-empty">No balance yet</div>
     {% endif %}
     {% if s.account.id in needs_you %}
-    <div class="meta meta-warn">{{ needs_you[s.account.id] }}</div>
+    <div class="meta meta-warn">Waiting for you to finish signing in.</div>
+    <div class="card-action"><a class="button button-small" href="/accounts/{{ s.account.id }}/sign-in?back=dashboard">Continue signing in</a></div>
     {% elif s.account.id not in busy and s.account.sync_message %}
     <div class="meta meta-warn">{{ s.account.sync_message }}</div>
     {% if s.account.sync_status in ("needs_login", "login_rejected") and auto_fetch and s.provider.supports_fetch and s.account.credentials_encrypted %}

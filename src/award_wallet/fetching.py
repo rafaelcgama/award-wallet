@@ -4,14 +4,17 @@ Each program has its own Chrome profile in the app's data folder, used for every
 sees the same browser every time and remembers it the way your own Chrome is remembered: after
 the first sign-in it usually skips the security code.
 
-A refresh runs Chrome in its hidden mode: no window, nothing in the Dock. It types the saved login
-itself, a key at a time like a person, on whichever page the site shows it. When the site wants
-something only you can give, like a code texted to your phone, the refresh stops and the app says
-so; nothing pops up. A window opens only when you click Sign in. There the app types the saved
-login, you finish what the site asks, and if the site turned the saved login down and you signed
-in with another, the app keeps the one that worked.
+Chrome always runs in its hidden mode: no window, nothing in the Dock. A refresh types the saved
+login itself, a key at a time like a person, on whichever page the site shows it. When the site
+wants something only you can give, like a code texted to your phone, the refresh stops and the
+app says so; nothing pops up. When you click Sign in, the same hidden Chrome signs in and the app
+shows its page in Award Wallet's own window (see sign_in_view), where you finish what the site
+asks. Sites that tell a Chrome window from hidden Chrome then know the browser that refreshes,
+not a window it never uses. If the site turned the saved login down and you signed in with
+another, the app keeps the one that worked.
 """
 
+import base64
 import json
 import logging
 import os
@@ -29,10 +32,11 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from award_wallet.providers import Provider
+from award_wallet.sign_in_view import SignInView
 
 log = logging.getLogger(__name__)
 
-# How long a window that's up for you waits for you to finish.
+# How long a sign-in you opened waits for you, counted from your last click or key.
 PERSON_TIMEOUT = 5 * 60
 # How long a refresh tries before it stops and says the site needs you.
 QUIET_TIMEOUT = 60
@@ -69,9 +73,14 @@ FORM_SETTLE = 1.5
 # The pause between keys while typing a login, and before sending it, in seconds.
 KEY_PAUSE = (0.05, 0.16)
 SEND_PAUSE = (0.3, 0.7)
-WINDOW_SIZE = (1200, 900)
-# Where the window of a sign-in you asked for opens.
-WINDOW_POSITION = (80, 60)
+# Chrome's window, out of sight. Wider than tall, so the page fits the app's window as you sign in.
+WINDOW_SIZE = (1200, 760)
+# The largest picture of the page sent to the app's window while you sign in, in pixels, and its
+# JPEG quality.
+PICTURE_SIZE = (2000, 1400)
+PICTURE_QUALITY = 72
+# While you sign in, how often your clicks and keys go to the page, in seconds.
+INPUT_EVERY = 0.05
 # Google Chrome, whose version says what Chrome's hidden mode should tell sites it is.
 CHROME_APP = Path("/Applications/Google Chrome.app")
 
@@ -286,19 +295,19 @@ class ChromeMissing(FetchProblem):
     pass
 
 
-def browser_launcher(profile: Path, headless: bool):
-    """Opens Chrome with the program's own profile: your installed Google Chrome, or
-    AW_BROWSER_PATH in tests. Headless is Chrome's hidden mode, for refreshes: no window and nothing
-    in the Dock. Otherwise Chrome opens a window. Returns Playwright and the browser context."""
+def browser_launcher(profile: Path):
+    """Opens Chrome with the program's own profile, in Chrome's hidden mode: no window and nothing
+    in the Dock. It's your installed Google Chrome, or AW_BROWSER_PATH in tests. Returns
+    Playwright and the browser context."""
     from playwright.sync_api import Error, sync_playwright
 
     profile.mkdir(mode=0o700, parents=True, exist_ok=True)
     quiet_profile(profile)
     playwright = sync_playwright().start()
     try:
-        options = _launch_options(headless)
+        options = _launch_options()
         context = _launch(playwright, profile, options, Error)
-        if headless and options.get("user_agent") is None:
+        if options.get("user_agent") is None:
             # Chrome's hidden mode calls itself "HeadlessChrome", which some sites turn away. Tell
             # them what its window would say. (Normally Chrome's version gives that up front; this
             # second start is for a Chrome found some other way.)
@@ -307,19 +316,18 @@ def browser_launcher(profile: Path, headless: bool):
                 context.close()
                 options["user_agent"] = seen.replace("HeadlessChrome/", "Chrome/")
                 context = _launch(playwright, profile, options, Error)
-        if headless:
-            _describe_this_mac(context, options.get("user_agent"))
+        _describe_this_mac(context, options.get("user_agent"))
     except BaseException:
         playwright.stop()
         raise
     return playwright, context
 
 
-def _launch_options(headless: bool) -> dict[str, Any]:
+def _launch_options() -> dict[str, Any]:
     width, height = WINDOW_SIZE
     args = ["--disable-blink-features=AutomationControlled", "--disk-cache-size=52428800"]
     options: dict[str, Any] = {
-        "headless": headless,
+        "headless": True,
         # Look like a normal Chrome, not one driven by a program, and keep the cookies encrypted
         # with the Mac's Keychain like your own Chrome does (Playwright would use a fake one).
         "ignore_default_args": ["--enable-automation", "--use-mock-keychain"],
@@ -329,18 +337,13 @@ def _launch_options(headless: bool) -> dict[str, Any]:
         # Nothing a site offers for download is saved.
         "accept_downloads": False,
     }
-    if headless:
-        # The same screen and browser a site sees in a window on this Mac, so it still knows it.
-        if screen := mac_screen():
-            screen_width, screen_height, scale = screen
-            width, height = min(width, screen_width), min(height, screen_height - 60)
-            args.append(
-                f"--screen-info={{0,0 {screen_width * scale}x{screen_height * scale} devicePixelRatio={scale}}}"
-            )
-        args.append(f"--window-size={width},{height}")
-        options["user_agent"] = chrome_user_agent()
-    else:
-        args += [f"--window-size={width},{height}", f"--window-position={WINDOW_POSITION[0]},{WINDOW_POSITION[1]}"]
+    # The same screen and browser a site sees in a window on this Mac.
+    if screen := mac_screen():
+        screen_width, screen_height, scale = screen
+        width, height = min(width, screen_width), min(height, screen_height - 60)
+        args.append(f"--screen-info={{0,0 {screen_width * scale}x{screen_height * scale} devicePixelRatio={scale}}}")
+    args.append(f"--window-size={width},{height}")
+    options["user_agent"] = chrome_user_agent()
     if path := os.environ.get("AW_BROWSER_PATH"):
         options["executable_path"] = path
     else:
@@ -650,8 +653,8 @@ def _at_balance_page(url: str, balance_url: str) -> bool:
     )
 
 
-# Runs in each page of a window that's up for you: passes on what goes into login boxes, so a
-# login you fix by hand can be kept. It reports through a hook the page itself can't see.
+# Runs in each page while you sign in: passes on what goes into login boxes, so a login you fix by
+# hand can be kept. It reports through a hook the page itself can't see.
 _WATCH_TYPING = r"""
 (name) => {
   const send = globalThis[name];
@@ -681,8 +684,8 @@ _WATCH_TYPING = r"""
 
 
 class _TypingWatcher:
-    """Notes what you type in a window's login boxes (only ever kept, encrypted, never logged), so a
-    login that worked can replace a saved one the site turned down."""
+    """Notes what goes into the login boxes while you sign in (only ever kept, encrypted, never
+    logged), so a login that worked can replace a saved one the site turned down."""
 
     def __init__(self, context, page):
         self.username: str | None = None
@@ -732,33 +735,31 @@ def fetch_balance(
     credentials: dict[str, str],
     profile: Path,
     *,
-    with_person: bool = False,
+    view: SignInView | None = None,
     type_login: bool = True,
-    launcher: Callable[[Path, bool], tuple[Any, Any]] = browser_launcher,
-    headless: bool | None = None,
+    launcher: Callable[[Path], tuple[Any, Any]] = browser_launcher,
     while_waiting: Callable[[Any], None] | None = None,
     screenshot_to: Path | None = None,
     seed_cookies: list[dict[str, Any]] | None = None,
-    on_needs_you: Callable[[str], None] | None = None,
     on_new_login: Callable[[dict[str, str]], None] | None = None,
 ) -> int:
-    """Sign in if needed and read the balance, in Chrome with the program's profile folder.
+    """Sign in if needed and read the balance, in hidden Chrome with the program's profile folder.
 
-    A refresh (the default) runs in Chrome's hidden mode and never shows anything: if the site
-    wants something only you can give, it stops with NeedsPerson, whose message says to click
-    Sign in. with_person is that sign-in: a window opens, the app types the saved login (unless
-    type_login is off, when the site already turned it down), and on_needs_you gets a note saying
-    what the site wants from you, for the app to show. If the site turned the saved login down and
-    you signed in with another, on_new_login gets the one that worked.
+    A refresh (no view) never shows anything: if the site wants something only you can give, it
+    stops with NeedsPerson, whose message says to click Sign in. Sign in runs the same Chrome with a
+    view: its page shows in the app's window and your clicks and keys go to it. The app types the
+    saved login (unless type_login is off, when the site already turned it down) and the view says
+    what the site wants from you. If the site turned the saved login down and you signed in with
+    another, on_new_login gets the one that worked.
 
-    headless forces the hidden mode (tests). while_waiting is called on each poll while you're at
-    the window (tests use it to play you). seed_cookies are added to a new profile: cookies kept by
-    older versions of the app, so the site still knows this Mac.
+    while_waiting is called on each look at the page while you sign in (tests use it to play you).
+    seed_cookies are added to a new profile: cookies kept by older versions of the app, so the site
+    still knows this Mac.
     """
     if not provider.supports_fetch:
         raise FetchProblem(f"Automatic fetching isn't available for {provider.name} yet.")
     assert provider.balance_url
-    playwright, context = launcher(profile, not with_person if headless is None else headless)
+    playwright, context = launcher(profile)
     try:
         if seed_cookies:
             try:
@@ -766,14 +767,10 @@ def fetch_balance(
             except Exception as exc:
                 log.info("%s: couldn't carry over the saved cookies: %s", provider.key, exc)
         page = context.pages[0] if context.pages else context.new_page()
-        watcher = _TypingWatcher(context, page) if with_person else None
-        if with_person:
-            try:
-                page.bring_to_front()
-            except Exception:
-                pass
-        run = _Run(provider, credentials, with_person, type_login, on_needs_you, while_waiting)
-        if with_person and not type_login:
+        watcher = _TypingWatcher(context, page) if view else None
+        screen = _Screen(context, page, view) if view else None
+        run = _Run(provider, credentials, view, screen, type_login, while_waiting)
+        if view and not type_login:
             # The site turned the saved login down on the last refresh: you sign in this time.
             run.needs_you(_rejected_note(provider), "")
         page.goto(provider.balance_url, wait_until="domcontentloaded")
@@ -793,6 +790,60 @@ def fetch_balance(
             context.close()
         finally:
             playwright.stop()
+
+
+class _Screen:
+    """Shows the hidden Chrome's page in the app's window while you sign in (see sign_in_view), and
+    passes your clicks and keys on to the page, as if you made them in Chrome itself."""
+
+    def __init__(self, context, page, view: SignInView):
+        self._page, self._view = page, view
+        self._connection: Any = None
+        try:
+            self._connection = context.new_cdp_session(page)
+            self._connection.on("Page.screencastFrame", self._frame)
+            width, height = PICTURE_SIZE
+            self._connection.send(
+                "Page.startScreencast",
+                {"format": "jpeg", "quality": PICTURE_QUALITY, "maxWidth": width, "maxHeight": height},
+            )
+        except Exception as exc:
+            log.info("Can't show the page in the window: %s", type(exc).__name__)
+
+    def _frame(self, event: dict[str, Any]) -> None:
+        # Chrome sends no more pictures until it hears this one arrived.
+        try:
+            metadata = event["metadata"]
+            self._view.show(base64.b64decode(event["data"]), metadata["deviceWidth"], metadata["deviceHeight"])
+        except Exception:
+            pass
+        try:
+            self._connection.send("Page.screencastFrameAck", {"sessionId": event["sessionId"]})
+        except Exception:
+            pass
+
+    def pump(self) -> set[str]:
+        """Pass on the clicks and keys you made since the last call. Returns what kinds they were."""
+        kinds = set()
+        for event in self._view.take():
+            kinds.add(event["kind"])
+            try:
+                self._dispatch(event)
+            except Exception as exc:  # the page changed under it, like a click that missed
+                log.info("Couldn't pass on a %s: %s", event["kind"], type(exc).__name__)
+        return kinds
+
+    def _dispatch(self, event: dict[str, Any]) -> None:
+        mouse, keyboard = self._page.mouse, self._page.keyboard
+        if event["kind"] == "click":
+            mouse.click(event["x"], event["y"])
+        elif event["kind"] == "scroll":
+            mouse.move(event["x"], event["y"])
+            mouse.wheel(event["dx"], event["dy"])
+        elif event["kind"] == "text":
+            keyboard.type(event["text"])
+        elif event["kind"] == "key":
+            keyboard.press(("Shift+" if event["shift"] else "") + event["key"])
 
 
 def _scroll_on(page) -> None:
@@ -824,25 +875,22 @@ def _title(page) -> str:
         return ""
 
 
-def _confirm_note(provider: Provider, at_window: bool) -> str:
-    finish = f"Finish it in the {provider.name} window" if at_window else "Click Sign in to do it"
+def _confirm_note(provider: Provider, with_you: bool) -> str:
+    finish = "Do what it asks below" if with_you else "Click Sign in to do it"
     return (
         f"{provider.name} wants to confirm it's you, usually only the first time. {finish}; after that, "
         "refreshes run on their own."
     )
 
 
-def _finish_note(provider: Provider, at_window: bool) -> str:
-    if at_window:
-        return f"{provider.name} needs you to finish signing in, in its Chrome window."
+def _finish_note(provider: Provider, with_you: bool) -> str:
+    if with_you:
+        return f"{provider.name} needs you to finish signing in below."
     return f"{provider.name} needs you to finish signing in. Click Sign in."
 
 
 def _rejected_note(provider: Provider) -> str:
-    return (
-        f"{provider.name} didn't take the saved login. Sign in in the {provider.name} window, and "
-        "Award Wallet keeps the login that works."
-    )
+    return f"{provider.name} didn't take the saved login. Sign in below, and Award Wallet keeps the login that works."
 
 
 def _sentences(text: str) -> set[str]:
@@ -900,32 +948,62 @@ def _type_username(fields: _Fields, credentials: dict[str, str]) -> bool:
 class _Run:
     provider: Provider
     credentials: dict[str, str]
-    # A window is up because you asked to sign in; otherwise it's a refresh, which shows nothing.
-    at_window: bool
+    # Set while you sign in in the app's window. A refresh has none, and shows nothing.
+    view: SignInView | None
+    screen: _Screen | None
     type_login: bool
-    on_needs_you: Callable[[str], None] | None
     while_waiting: Callable[[Any], None] | None
     # The site turned the saved login down during this run.
     rejected: bool = False
+    # You clicked or typed on the page: from then on the app types nothing there.
+    took_over: bool = False
+    # When your last click or key reached the page.
+    last_input: float = 0.0
     _said: str = ""
 
-    def needs_you(self, at_window_note: str, refresh_note: str) -> None:
-        """The site wants something only you can give. A refresh stops and says so; at a window,
-        the app shows the note and keeps waiting for you."""
-        if not self.at_window:
+    @property
+    def with_you(self) -> bool:
+        return self.view is not None
+
+    @property
+    def types(self) -> bool:
+        """Whether the app types the saved login into the forms it finds."""
+        return self.type_login and not self.took_over
+
+    def needs_you(self, with_you_note: str, refresh_note: str) -> None:
+        """The site wants something only you can give. A refresh stops and says so; while you sign
+        in, the app shows the note above the page and keeps waiting for you."""
+        if self.view is None:
             log.info("%s: the site needs you: %s", self.provider.key, refresh_note)
             raise NeedsPerson(refresh_note)
-        if at_window_note != self._said:
-            self._said = at_window_note
-            if self.on_needs_you:
-                self.on_needs_you(at_window_note)
+        if with_you_note != self._said:
+            self._said = with_you_note
+            self.view.say(with_you_note)
+
+    def wait(self, page, seconds: float) -> None:
+        """Give the page time. While you sign in, your clicks and keys reach it meanwhile."""
+        if self.screen is None:
+            time.sleep(seconds)
+            return
+        until = time.monotonic() + seconds
+        while True:
+            if kinds := self.screen.pump():
+                self.last_input = time.monotonic()
+                self.took_over = self.took_over or bool(kinds - {"scroll"})
+            left = until - time.monotonic()
+            if left <= 0:
+                return
+            try:
+                # Pictures of the page arrive only while Playwright waits on Chrome, as here.
+                page.wait_for_timeout(min(left, INPUT_EVERY) * 1000)
+            except Exception:  # the page is gone: the run finds out on its next look
+                time.sleep(min(left, INPUT_EVERY))
 
 
 def _sign_in_and_read(page, run: _Run) -> int:
     provider, credentials = run.provider, run.credentials
     assert provider.balance_url
     started = time.monotonic()
-    deadline = started + (PERSON_TIMEOUT if run.at_window else QUIET_TIMEOUT)
     username_tries = login_tries = 0
     # When the username, and the whole login, last went in.
     username_at = submitted_at = 0.0
@@ -943,12 +1021,17 @@ def _sign_in_and_read(page, run: _Run) -> int:
 
     while True:
         now = time.monotonic()
+        if run.view and run.view.stopped:
+            log.info("%s: you stopped the sign-in", provider.key)
+            raise NeedsPerson(f"You stopped the sign-in to {provider.name}. Click Sign in to try again.")
         if page.is_closed():
-            raise NeedsPerson(f"The {provider.name} window was closed before the sign-in finished. Try again.")
-        if now >= deadline:
-            if run.at_window:
-                raise NeedsPerson(f"The {provider.name} window timed out before the sign-in finished. Try again.")
-            run.needs_you("", _finish_note(provider, at_window=False))
+            raise NeedsPerson(f"{provider.name}'s page closed before the sign-in finished. Click Sign in to try again.")
+        if run.with_you and now >= max(started, run.last_input) + PERSON_TIMEOUT:
+            raise NeedsPerson(
+                f"The sign-in to {provider.name} timed out before it finished. Click Sign in to try again."
+            )
+        if not run.with_you and now >= started + QUIET_TIMEOUT:
+            run.needs_you("", _finish_note(provider, with_you=False))
         url = page.url
         if (where := _where(url)) != last_where:
             log.info("%s: at %s", provider.key, where)
@@ -969,7 +1052,7 @@ def _sign_in_and_read(page, run: _Run) -> int:
 
         if fields.password is not None:
             if (login_tries or not run.type_login) and _REJECTED_WORDS.search(_deep_text(page)):
-                if not run.at_window:
+                if not run.with_you:
                     log.info("%s: the site rejected the login", provider.key)
                     raise LoginRejected(
                         f"{provider.name} didn't take the saved login. Click Sign in to sign in once; "
@@ -987,7 +1070,7 @@ def _sign_in_and_read(page, run: _Run) -> int:
                 and _empty(fields.password)
                 and not _sentences(_deep_text(page)) - form_said
             )
-            if run.type_login and not run.rejected and form_ready and (not login_tries or cleared):
+            if run.types and not run.rejected and form_ready and (not login_tries or cleared):
                 if login_tries:
                     log.info("%s: the site cleared the login without saying why; typing it again", provider.key)
                 else:
@@ -996,7 +1079,7 @@ def _sign_in_and_read(page, run: _Run) -> int:
                     log.info("%s: submitted the login", provider.key)
                     login_tries += 1
                     submitted_at = time.monotonic()
-                time.sleep(POLL * 2)
+                run.wait(page, POLL * 2)
                 continue
         else:
             if at_balance_page or (on_site and not sign_in_page):
@@ -1010,26 +1093,26 @@ def _sign_in_and_read(page, run: _Run) -> int:
                         return balance
                     if balance != reading:
                         reading, read_at = balance, time.monotonic()
-                    time.sleep(POLL)
+                    run.wait(page, POLL)
                     continue
             # The site asks to confirm it's you, like Chase's "Let's make sure it's you" (on its
             # dashboard's own address). Only you can do that.
             if (
                 reading is None
-                and (login_tries or username_tries or run.at_window)
+                and (login_tries or username_tries or run.with_you)
                 and time.monotonic() - max(submitted_at, username_at) > SETTLE
                 and _asks_who_you_are(page)
             ):
-                if not run.at_window:
+                if not run.with_you:
                     log.info("%s: the site asks to confirm it's you (the page: %s)", provider.key, _title(page))
-                run.needs_you(_confirm_note(provider, at_window=True), _confirm_note(provider, at_window=False))
+                run.needs_you(_confirm_note(provider, with_you=True), _confirm_note(provider, with_you=False))
             if at_balance_page:
                 looking_since = looking_since or time.monotonic()
                 looked = time.monotonic() - looking_since
                 if looked > TROUBLE_GRACE and (trouble := _site_trouble(page)):
                     log.info("%s: the site shows an error", provider.key)
                     raise FetchProblem(f"{provider.name} says: “{trouble}” Try again later.")
-                if looked > READ_TIMEOUT and not run.at_window:
+                if looked > READ_TIMEOUT and not run.with_you:
                     raise FetchProblem(
                         f"Couldn't find your {provider.unit} on {provider.name}'s page. "
                         "The site may have changed; a screenshot was saved for checking."
@@ -1037,7 +1120,7 @@ def _sign_in_and_read(page, run: _Run) -> int:
                 if looked > SCROLL_EVERY and time.monotonic() - scrolled_at > SCROLL_EVERY:
                     scrolled_at = time.monotonic()
                     _scroll_on(page)
-            if fields.username is not None and run.type_login:
+            if fields.username is not None and run.types:
                 # Sites that ask for the username first and the password on the next screen, on a
                 # sign-in page or right on the account page, like United's.
                 cleared = username_tries < LOGIN_TRIES and now - username_at > RETRY_AFTER and _empty(fields.username)
@@ -1046,7 +1129,7 @@ def _sign_in_and_read(page, run: _Run) -> int:
                         log.info("%s: submitted the username", provider.key)
                         username_tries += 1
                         username_at, nudged = time.monotonic(), False
-                    time.sleep(POLL * 2)
+                    run.wait(page, POLL * 2)
                     continue
                 if username_tries and not nudged and now - username_at > NUDGE_AFTER:
                     # Enter didn't send it: click the form's Continue button, like you would.
@@ -1071,7 +1154,7 @@ def _sign_in_and_read(page, run: _Run) -> int:
             and not run.rejected
             and time.monotonic() - submitted_at > CHALLENGE_GRACE
         ):
-            run.needs_you(_finish_note(provider, at_window=True), _finish_note(provider, at_window=False))
-        if run.at_window and run.while_waiting:
+            run.needs_you(_finish_note(provider, with_you=True), _finish_note(provider, with_you=False))
+        if run.with_you and run.while_waiting:
             run.while_waiting(page)
-        time.sleep(POLL)
+        run.wait(page, POLL)

@@ -1,4 +1,6 @@
+import json
 import threading
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,11 +11,15 @@ from award_wallet.models import BalanceSnapshot, LoyaltyAccount, SyncStatus
 from award_wallet.services import accounts
 from award_wallet.web import create_app
 
-from conftest import post_form
+from conftest import CSRF_PATTERN, post_form
+
+# Stands in for a picture of a site's page.
+PICTURE = b"\xff\xd8\xff\xe0 a picture of the page \xff\xd9"
 
 
 class FakeSites:
-    """Stands in for Chrome: answers each fetch from a script."""
+    """Stands in for Chrome: answers each fetch from a script. calls says, for each fetch, whether
+    you were signing in (with the page shown in the window) or it was a refresh."""
 
     def __init__(self):
         self.answers: dict[str, object] = {}
@@ -29,21 +35,20 @@ class FakeSites:
         credentials,
         profile,
         *,
-        with_person,
+        view=None,
         type_login=True,
         screenshot_to=None,
         seed_cookies=None,
-        on_needs_you=None,
         on_new_login=None,
     ):
-        self.calls.append((provider.key, with_person))
+        self.calls.append((provider.key, view is not None))
         self.profiles.append(profile)
         self.seeds.append(seed_cookies)
         self.typed.append(type_login)
         self.logins.append(credentials)
         answer = self.answers.get(provider.key, 1000)
         if callable(answer):
-            answer = answer(on_needs_you) if answer.__code__.co_argcount == 1 else answer(on_needs_you, on_new_login)
+            answer = answer(view) if answer.__code__.co_argcount == 1 else answer(view, on_new_login)
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -81,23 +86,241 @@ def test_saving_a_login_fetches_out_of_sight(settings):
         assert "52,300" in page and "Up to date" in page and "Refresh now" in page
 
 
-def test_a_window_opens_only_when_you_click_sign_in(settings):
+def until(condition, seconds=10):
+    deadline = time.monotonic() + seconds
+    while not condition() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    return condition()
+
+
+def test_sign_in_shows_the_site_in_the_window(settings):
     sites = FakeSites()
     sites.answers["capital_one"] = fetching.NeedsPerson("Capital One wants to confirm it's you. Click Sign in.")
     app = open_app(settings, sites)
     with TestClient(app, base_url="http://127.0.0.1") as window:
         window.get("/?token=t")
-        response = link_with_login(window, "capital_one")
+        path = link_with_login(window, "capital_one").url.path
         app.state.refresher.wait()
         dashboard = window.get("/").text
         assert "Needs your sign-in" in dashboard and "Click Sign in" in dashboard
-        assert sites.calls == [("capital_one", False)]
-        sites.answers["capital_one"] = 52300
-        page = post_form(window, response.url.path + "/sign-in", {"back": "dashboard"}, token_from="/")
-        assert "A Chrome window is opening to sign in to Capital One" in page.text
+        assert sites.calls == [("capital_one", False)]  # a refresh shows nothing
+
+        note = "Capital One wants to confirm it's you. Do what it asks below."
+        shown, you_finished = threading.Event(), threading.Event()
+
+        def capital_one_asks(view):
+            view.show(PICTURE, 1200, 800)
+            view.say(note)
+            shown.set()
+            you_finished.wait(10)
+            return 52300
+
+        sites.answers["capital_one"] = capital_one_asks
+        page = post_form(window, path + "/sign-in", {"back": "dashboard"}, token_from="/")
+        assert page.url.path == path + "/sign-in" and page.url.query == b"back=dashboard"
+        assert ">Sign in to Capital One</h1>" in page.text and 'href="/">← All programs' in page.text
+        assert shown.wait(10)
+
+        status = window.get(path + "/sign-in/status?after=0").json()
+        assert status["state"] == "open" and status["note"] == note
+        assert (status["picture"], status["width"], status["height"]) == (1, 1200, 800)
+        picture = window.get(path + f"/sign-in/picture?n={status['picture']}")
+        assert picture.content == PICTURE and picture.headers["content-type"] == "image/jpeg"
+        assert picture.headers["cache-control"] == "no-store"  # never kept on disk
+        for elsewhere in (window.get("/").text, window.get(path).text):
+            assert "Waiting for you" in elsewhere and "Continue signing in" in elsewhere
+
+        you_finished.set()
         app.state.refresher.wait()
         assert sites.calls == [("capital_one", False), ("capital_one", True)]
-        assert "52,300" in window.get("/").text
+        assert window.get(path + "/sign-in/status?after=0").json() == {"state": "gone"}
+        assert window.get(path + "/sign-in", follow_redirects=False).headers["location"] == path
+        assert window.get(path + "/sign-in/picture").status_code == 404
+        dashboard = window.get("/").text
+        assert "52,300" in dashboard and "Up to date" in dashboard and "Waiting for you" not in dashboard
+
+
+def test_the_status_waits_for_something_new(settings):
+    sites = FakeSites()
+    shown, next_picture = threading.Event(), threading.Event()
+
+    def chase(view):
+        view.show(PICTURE, 1200, 800)
+        shown.set()
+        next_picture.wait(10)
+        view.show(PICTURE, 1200, 800)
+        time.sleep(0.2)
+        return 80000
+
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        sites.answers["chase"] = fetching.NeedsPerson("Chase wants to confirm it's you. Click Sign in.")
+        path = link_with_login(window, "chase").url.path
+        app.state.refresher.wait()
+        sites.answers["chase"] = chase
+        post_form(window, path + "/sign-in", {}, token_from=path)
+        assert shown.wait(10)
+        version = window.get(path + "/sign-in/status").json()["version"]
+        threading.Timer(0.3, next_picture.set).start()
+        started = time.monotonic()
+        status = window.get(path + f"/sign-in/status?after={version}").json()
+        assert time.monotonic() - started >= 0.25  # it waited for the next picture
+        assert status["picture"] == 2 and status["version"] > version
+        app.state.refresher.wait()
+
+
+def test_your_clicks_and_keys_reach_the_page(settings):
+    sites = FakeSites()
+    shown, received = threading.Event(), []
+
+    def you_type_the_code(view):
+        view.show(PICTURE, 1200, 800)
+        shown.set()
+        until(lambda: received.extend(view.take()) or len(received) >= 3)
+        return 80000
+
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        sites.answers["chase"] = fetching.NeedsPerson("Chase wants to confirm it's you. Click Sign in.")
+        path = link_with_login(window, "chase").url.path
+        app.state.refresher.wait()
+        sites.answers["chase"] = you_type_the_code
+        sign_in_page = post_form(window, path + "/sign-in", {}, token_from=path).text
+        token = CSRF_PATTERN.search(sign_in_page).group(1)
+        assert f'data-token="{token}"' in sign_in_page
+        assert shown.wait(10)
+
+        def send(events, *, csrf=token, **request):
+            data = {"csrf_token": csrf, "events": events if isinstance(events, str) else json.dumps(events)}
+            return window.post(path + "/sign-in/input", data=data, **request).status_code
+
+        # Anything but a click on the page, a scroll, some text or a known key is turned away.
+        for bad in (
+            [{"kind": "click", "x": 1300, "y": 10}],
+            [{"kind": "click", "x": True, "y": 10}],
+            [{"kind": "scroll", "x": 1, "y": 1, "dx": 0, "dy": 99999}],
+            [{"kind": "text", "text": "line one\nline two"}],
+            [{"kind": "text", "text": ""}],
+            [{"kind": "key", "key": "F12"}],
+            [{"kind": "script", "source": "alert(1)"}],
+            [{"kind": "click", "x": 1, "y": 1}] * 51,
+            [],
+            "not json",
+            "x" * 20_001,
+        ):
+            assert send(bad) == 400, bad
+        assert send([{"kind": "click", "x": 1, "y": 1}], csrf="wrong") == 403
+        assert send([{"kind": "click", "x": 1, "y": 1}], headers={"Origin": "https://evil.example"}) == 403
+
+        assert send([{"kind": "click", "x": 600, "y": 400.5}]) == 204
+        assert send([{"kind": "text", "text": "123 456 é"}, {"kind": "key", "key": "Enter", "shift": "yes"}]) == 204
+        app.state.refresher.wait()
+        assert received == [
+            {"kind": "click", "x": 600.0, "y": 400.5},
+            {"kind": "text", "text": "123 456 é"},
+            {"kind": "key", "key": "Enter", "shift": False},
+        ]
+        assert send([{"kind": "click", "x": 1, "y": 1}]) == 409  # the sign-in is over
+
+
+def test_only_the_apps_own_window_sees_a_sign_in(settings):
+    sites = FakeSites()
+    shown, you_finished = threading.Event(), threading.Event()
+
+    def chase(view):
+        view.show(PICTURE, 1200, 800)
+        shown.set()
+        you_finished.wait(10)
+        return 80000
+
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        sites.answers["chase"] = fetching.NeedsPerson("Chase wants to confirm it's you. Click Sign in.")
+        path = link_with_login(window, "chase").url.path
+        app.state.refresher.wait()
+        sites.answers["chase"] = chase
+        post_form(window, path + "/sign-in", {}, token_from=path)
+        assert shown.wait(10)
+        # Another web page in a browser on this Mac can't load the picture or the status.
+        for address in ("/sign-in/picture", "/sign-in/status"):
+            assert window.get(path + address, headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+        # Nor can anything that didn't open the app's window.
+        with TestClient(app, base_url="http://127.0.0.1") as stranger:
+            assert stranger.get(path + "/sign-in/picture").status_code == 403
+            assert PICTURE not in stranger.get(path + "/sign-in/picture").content
+        you_finished.set()
+        app.state.refresher.wait()
+
+
+def test_stopping_a_sign_in(settings):
+    sites = FakeSites()
+    shown = threading.Event()
+
+    def chase(view):
+        view.show(PICTURE, 1200, 800)
+        shown.set()
+        assert until(lambda: view.stopped)
+        raise fetching.NeedsPerson("You stopped the sign-in to Chase. Click Sign in to try again.")
+
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        sites.answers["chase"] = fetching.NeedsPerson("Chase wants to confirm it's you. Click Sign in.")
+        path = link_with_login(window, "chase").url.path
+        app.state.refresher.wait()
+        sites.answers["chase"] = chase
+        post_form(window, path + "/sign-in", {"back": "dashboard"}, token_from=path)
+        assert shown.wait(10)
+        page = post_form(window, path + "/sign-in/stop", {"back": "dashboard"}, token_from=path + "/sign-in")
+        assert page.url.path == "/"
+        assert window.get(path + "/sign-in/status").json() == {"state": "gone"}
+        app.state.refresher.wait()
+        account_page = window.get(path).text
+        assert "You stopped the sign-in to Chase" in account_page and "Needs your sign-in" in account_page
+
+
+def test_a_sign_in_you_dont_finish_keeps_a_turned_down_login_from_refreshes(settings):
+    sites = FakeSites()
+    sites.answers["chase"] = fetching.LoginRejected("Chase didn't take the saved login.")
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        path = link_with_login(window, "chase").url.path
+        app.state.refresher.wait()
+        sites.answers["chase"] = fetching.NeedsPerson("The sign-in to Chase timed out before it finished.")
+        post_form(window, path + "/sign-in", {}, token_from=path)
+        app.state.refresher.wait()
+        with app.state.sessionmaker() as db:
+            assert db.query(LoyaltyAccount).one().sync_status == SyncStatus.LOGIN_REJECTED
+        sites.calls.clear()
+        post_form(window, "/refresh", {}, token_from="/")
+        app.state.refresher.wait()
+        assert sites.calls == []  # the turned-down password isn't tried again
+
+
+def test_sign_in_waits_for_a_refresh_already_running(settings):
+    sites = FakeSites()
+    running, let_go = threading.Event(), threading.Event()
+
+    def slow_refresh(view):
+        running.set()
+        let_go.wait(10)
+        return 80000
+
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        sites.answers["chase"] = slow_refresh
+        path = link_with_login(window, "chase").url.path
+        assert running.wait(10)
+        page = post_form(window, path + "/sign-in", {}, token_from=path)
+        assert page.url.path == path and "Chase is refreshing right now" in page.text
+        let_go.set()
+        app.state.refresher.wait()
+        assert sites.calls == [("chase", False)]
 
 
 def test_every_launch_refreshes_quietly_with_the_same_browser(settings):
@@ -172,12 +395,12 @@ def test_an_unanswered_security_code_is_asked_again_on_the_next_refresh(settings
         assert "80,000" in window.get("/").text
 
 
-def test_the_app_says_what_a_site_wants_while_its_window_is_up(settings):
+def test_the_app_says_what_a_site_wants_while_you_sign_in(settings):
     sites = FakeSites()
     window_up, you_finished = threading.Event(), threading.Event()
 
-    def chase_asks(on_needs_you):
-        on_needs_you("Chase wants to confirm it's you, usually only the first time.")
+    def chase_asks(view):
+        view.say("Chase wants to confirm it's you, usually only the first time.")
         window_up.set()
         you_finished.wait(10)
         return 80000
@@ -192,8 +415,9 @@ def test_the_app_says_what_a_site_wants_while_its_window_is_up(settings):
         post_form(window, response.url.path + "/sign-in", {}, token_from=response.url.path)
         assert window_up.wait(10)
         for page in (window.get("/").text, window.get(response.url).text):
-            assert "Waiting for you" in page
-            assert "Chase wants to confirm it&#39;s you, usually only the first time." in page
+            assert "Waiting for you" in page and "Continue signing in" in page
+        sign_in_page = window.get(response.url.path + "/sign-in").text
+        assert "Chase wants to confirm it&#39;s you, usually only the first time." in sign_in_page
         you_finished.set()
         app.state.refresher.wait()
         page = window.get("/").text
@@ -304,7 +528,7 @@ def test_programs_refresh_at_the_same_time(settings):
     running, most = [], []
     lock = threading.Lock()
 
-    def slow_site(provider, credentials, profile, *, with_person, **options):
+    def slow_site(provider, credentials, profile, **options):
         with lock:
             running.append(provider.key)
             most.append(len(running))
@@ -334,16 +558,18 @@ def test_signing_in_after_a_turned_down_login_keeps_the_one_that_works(settings)
         assert "Chase didn&#39;t take the saved login." in dashboard
         assert f'action="/accounts/{response.url.path.rsplit("/", 1)[-1]}/sign-in"' in dashboard
 
-        def you_sign_in(on_needs_you, on_new_login):
+        def you_sign_in(view, on_new_login):
             on_new_login({"password": "the right one"})
             return 80000
 
         sites.answers["chase"] = you_sign_in
         sites.typed.clear()
-        page = post_form(window, response.url.path + "/sign-in", {"back": "dashboard"}, token_from="/")
-        assert page.url.path == "/"
+        page = post_form(
+            window, response.url.path + "/sign-in", {"back": "dashboard"}, token_from="/", follow_redirects=False
+        )
+        assert page.headers["location"] == response.url.path + "/sign-in?back=dashboard"
         app.state.refresher.wait()
-        assert sites.typed == [False]  # at the window you sign in; the app doesn't try the old login again
+        assert sites.typed == [False]  # you sign in; the app doesn't try the old login again
         with app.state.sessionmaker() as db:
             account = db.query(LoyaltyAccount).one()
             assert accounts.read_credentials(app.state.vault, account) == {
