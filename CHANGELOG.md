@@ -4,6 +4,29 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-06
+
+### Added
+- American Airlines AAdvantage. Link it with your AAdvantage number (or username) and password,
+  and the app reads your award miles. It never takes Loyalty Points, lifetime miles or a card
+  offer for the balance: if it can't tell, it shows no number rather than a wrong one.
+
+### Changed
+- Updating is one click, like other Mac apps: **Update now** downloads the new version with a
+  progress bar, then the app closes, replaces itself and reopens. No .dmg to open and no second
+  button. If the download fails, the page says why and offers **Try again**.
+- Updates always land in your Applications folder, even when the app was opened from the .dmg
+  or Downloads. Opened from anywhere else, the app offers **Move to Applications**. If
+  Applications already has the same or a newer version, that one is kept and opened instead.
+- Buttons show they're alive: they light up under the pointer, press in when clicked, and show a
+  spinner with what they're doing (**Refreshing…**, **Starting…**) until the page changes.
+
+### Fixed
+- An update can no longer leave you without the app. Before, an app opened from the .dmg or
+  from a temporary copy macOS makes of downloaded apps tried to replace itself there, failed, and
+  didn't reopen. The installer now also never copies a new version over an old one it couldn't
+  move aside, and writes what it did to `install.log` in Diagnostics.
+
 ## [0.5.1] - 2026-11-01
 
 ### Fixed

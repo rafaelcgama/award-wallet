@@ -1,5 +1,9 @@
 import io
 import json
+import os
+import subprocess
+import threading
+import time
 import urllib.error
 from pathlib import Path
 
@@ -96,24 +100,161 @@ def test_failed_check_is_explained(settings, monkeypatch):
         assert "No published releases" in window.get("/about?check=1").text
 
 
-def test_installed_app_installs_updates_itself(settings, monkeypatch, tmp_path):
+class _Mac:
+    """The installed Mac app, as the update code sees it: where it runs, and its quit hook."""
+
+    def __init__(self, monkeypatch, app: Path):
+        self.quit_calls = 0
+        self.installers: list[str] = []
+        monkeypatch.setattr(updates, "running_app_bundle", lambda: app)
+        monkeypatch.setattr(updates, "_run_installer", lambda text, folder: self.installers.append(text))
+        # Quit right away instead of after the "Installing" page has shown for a moment.
+        monkeypatch.setattr(
+            "award_wallet.web.routes.about.threading.Timer",
+            lambda delay, fn: type("T", (), {"start": lambda self: fn()})(),
+        )
+
+    def attach(self, window) -> None:
+        window.app.state.quit_app = self.quit
+
+    def quit(self) -> None:
+        self.quit_calls += 1
+
+
+def _token(page: str) -> str:
+    return page.split('name="csrf_token" value="')[1].split('"')[0]
+
+
+def _wait_for(window, **expected) -> dict:
+    """Poll the update's status, as the progress page does, until it shows what's expected."""
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        status = window.get("/update/status").json()
+        if all(status[key] == value for key, value in expected.items()):
+            return status
+        time.sleep(0.02)
+    raise AssertionError(f"the update never got to {expected}: {status}")
+
+
+def _eventually(condition) -> None:
+    deadline = time.monotonic() + 10
+    while not condition():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.02)
+
+
+def test_update_now_is_one_click_with_progress(settings, monkeypatch, tmp_path):
     release = updates.Release("99.0.0", "https://github.com/x/y", "https://example.com/aw.dmg")
     monkeypatch.setattr(updates, "latest_release", lambda repo: release)
-    monkeypatch.setattr(updates, "running_app_bundle", lambda: tmp_path / "Award Wallet.app")
-    started, quit_calls = [], []
-    monkeypatch.setattr(updates, "start_install", lambda r, app: started.append((r.version, app.name)))
-    monkeypatch.setattr(
-        "award_wallet.web.routes.about.threading.Timer", lambda delay, fn: type("T", (), {"start": lambda self: fn()})()
-    )
+    mac = _Mac(monkeypatch, Path("/Applications/Award Wallet.app"))
+    go_on = threading.Event()
+
+    def download(url, destination, timeout=60, progress=None):
+        progress(40, 100)
+        go_on.wait(10)
+        progress(100, 100)
+        destination.write_bytes(b"dmg")
+
+    monkeypatch.setattr(updates, "download", download)
     with _window(settings) as window:
-        window.app.state.quit_app = lambda: quit_calls.append(True)
+        mac.attach(window)
+        window.app.state.available_update = release
+        dashboard = window.get("/").text
+        assert "Award Wallet 99.0.0 is available." in dashboard and "Update now" in dashboard
+        # One click on the banner starts it: no second button on another page.
+        page = window.post("/update", data={"csrf_token": _token(dashboard)})
+        assert page.url.path == "/update"
+        assert "Updating to 99.0.0" in page.text and "progressbar" in page.text
+        _wait_for(window, state="downloading", percent=40)
+        go_on.set()
+        _wait_for(window, state="installing", percent=100)
+        _eventually(lambda: mac.quit_calls == 1)
+        # Clicking again while it installs doesn't start a second one.
+        window.post("/update", data={"csrf_token": _token(dashboard)})
+    [script] = mac.installers
+    assert "'/Applications/Award Wallet.app'" in script and "update.dmg" in script
+    assert mac.quit_calls == 1
+
+
+def test_a_failed_download_says_why_and_offers_another_try(settings, monkeypatch):
+    release = updates.Release("99.0.0", "https://github.com/x/y", "https://example.com/aw.dmg")
+    monkeypatch.setattr(updates, "latest_release", lambda repo: release)
+    mac = _Mac(monkeypatch, Path("/Applications/Award Wallet.app"))
+
+    def offline(url, destination, timeout=60, progress=None):
+        raise updates.UpdateCheckFailed("Couldn't download the update. Check your internet connection.")
+
+    monkeypatch.setattr(updates, "download", offline)
+    with _window(settings) as window:
+        mac.attach(window)
         about = window.get("/about?check=1").text
-        assert "Install version 99.0.0" in about
-        token = about.split('name="csrf_token" value="')[1].split('"')[0]
-        page = window.post("/about/install", data={"csrf_token": token})
-        assert "Installing version 99.0.0" in page.text
-    assert started == [("99.0.0", "Award Wallet.app")]
-    assert quit_calls == [True]
+        assert "Update to 99.0.0" in about
+        window.post("/update", data={"csrf_token": _token(about)})
+        assert "Couldn't download" in _wait_for(window, state="failed")["error"]
+        page = window.get("/update").text
+        assert "The update didn't finish" in page and "Try again" in page
+    assert mac.quit_calls == 0 and mac.installers == []
+
+
+def test_an_app_opened_from_the_dmg_offers_to_move_into_applications(settings, monkeypatch):
+    mac = _Mac(monkeypatch, Path("/Volumes/Award Wallet/Award Wallet.app"))
+    monkeypatch.setattr(updates, "_can_write", lambda folder: True)
+    monkeypatch.setattr(updates, "bundle_version", lambda app: None)
+    with _window(settings) as window:
+        mac.attach(window)
+        dashboard = window.get("/").text
+        assert "running from the disk image (.dmg), not your Applications folder" in dashboard
+        page = window.post("/move-to-applications", data={"csrf_token": _token(dashboard)})
+        assert "Moving to Applications" in page.text and "/Applications/Award Wallet.app" in page.text
+        assert "eject the Award Wallet disk image" in page.text
+    assert mac.quit_calls == 1
+    [script] = mac.installers
+    assert "new='/Volumes/Award Wallet/Award Wallet.app'" in script
+
+
+def test_a_stale_copy_opens_the_newer_one_in_applications_instead(settings, monkeypatch):
+    mac = _Mac(monkeypatch, Path.home() / "Downloads" / "Award Wallet.app")
+    monkeypatch.setattr(updates, "_can_write", lambda folder: True)
+    monkeypatch.setattr(updates, "bundle_version", lambda app: "99.0.0")
+    with _window(settings) as window:
+        mac.attach(window)
+        dashboard = window.get("/").text
+        assert "running from ~/Downloads" in dashboard
+        page = window.post("/move-to-applications", data={"csrf_token": _token(dashboard)}).text
+        assert "delete the copy in ~/Downloads" in page
+    [script] = mac.installers
+    assert "new=''" in script and "open '/Applications/Award Wallet.app'" in script
+
+
+def test_an_app_in_applications_offers_no_move(settings, monkeypatch):
+    mac = _Mac(monkeypatch, Path("/Applications/Award Wallet.app"))
+    with _window(settings) as window:
+        mac.attach(window)
+        assert "Move to Applications" not in window.get("/").text
+
+
+def test_updates_always_land_in_applications(monkeypatch):
+    home = Path.home()
+    assert updates.install_target(Path("/Applications/Award Wallet.app")) == Path("/Applications/Award Wallet.app")
+    assert updates.install_target(home / "Applications/Award Wallet.app") == home / "Applications/Award Wallet.app"
+    monkeypatch.setattr(updates, "_can_write", lambda folder: True)
+    for elsewhere in ("/Volumes/Award Wallet/Award Wallet.app", f"{home}/Downloads/Award Wallet.app"):
+        assert updates.install_target(Path(elsewhere)) == Path("/Applications/Award Wallet.app")
+    monkeypatch.setattr(updates, "_can_write", lambda folder: False)
+    assert updates.install_target(home / "Downloads/Award Wallet.app") == home / "Applications/Award Wallet.app"
+    assert updates.where_it_runs(home / "Downloads/Award Wallet.app") == "~/Downloads"
+    assert "temporary copy" in updates.where_it_runs(Path("/private/var/folders/x/AppTranslocation/y/d/A.app"))
+
+
+def test_download_reports_progress(monkeypatch, tmp_path):
+    class Response(io.BytesIO):
+        headers = {"Content-Length": str(600 * 1024)}
+
+    monkeypatch.setattr(updates.urllib.request, "urlopen", lambda *a, **k: Response(b"x" * 600 * 1024))
+    seen = []
+    updates.download("https://example.com/aw.dmg", tmp_path / "aw.dmg", progress=lambda d, t: seen.append((d, t)))
+    assert seen[-1] == (600 * 1024, 600 * 1024) and len(seen) == 3
+    assert (tmp_path / "aw.dmg").stat().st_size == 600 * 1024
 
 
 def test_web_version_only_links_to_the_download(settings, monkeypatch):
@@ -121,12 +262,112 @@ def test_web_version_only_links_to_the_download(settings, monkeypatch):
     monkeypatch.setattr(updates, "latest_release", lambda repo: release)
     with _window(settings) as window:
         about = window.get("/about?check=1").text
-        assert "Install version" not in about
+        assert "Update to" not in about
         assert "https://example.com/aw.dmg" in about
 
 
-def test_installer_waits_swaps_and_reopens(tmp_path):
-    script = updates.installer_script(tmp_path / "u.dmg", Path("/Applications/Award Wallet.app"), 4242)
-    assert "kill -0 4242" in script
-    assert "'/Applications/Award Wallet.app'" in script
-    assert script.rstrip().endswith("open '/Applications/Award Wallet.app'")
+# The installer script, run for real with stand-ins for the Mac's own tools ---------------------
+
+_TOOLS = {
+    # Mounting the .dmg shows the app that was put next to it.
+    "hdiutil": 'if [ "$1" = attach ]; then cp -R "$7.contents/." "$6/"; else rm -rf "$3"; fi',
+    "ditto": '[ -f "$STUB_DIR/ditto-fails" ] && exit 1; cp -R "$1" "$2"',
+    # Like moving an app out of a folder you're not allowed to change.
+    "mv": '[ -f "$STUB_DIR/mv-fails" ] && exit 1; exec /bin/mv "$@"',
+    "xattr": "exit 0",
+    "open": 'echo "$@" >> "$STUB_DIR/opened"',
+}
+
+
+def _app(path: Path, version: str) -> Path:
+    (path / "Contents").mkdir(parents=True)
+    (path / "Contents" / "version").write_text(version)
+    return path
+
+
+def _run(script: str, tmp_path: Path) -> list[str]:
+    tools = tmp_path / "tools"
+    tools.mkdir(exist_ok=True)
+    for name, body in _TOOLS.items():
+        (tools / name).write_text(f"#!/bin/bash\n{body}\n")
+        (tools / name).chmod(0o755)
+    env = {**os.environ, "PATH": f"{tools}:{os.environ['PATH']}", "STUB_DIR": str(tmp_path)}
+    subprocess.run(["/bin/bash", "-c", script], env=env, check=True, timeout=30)
+    opened = tmp_path / "opened"
+    return opened.read_text().split("\n")[:-1] if opened.exists() else []
+
+
+def _quit_pid() -> int:
+    """The id of a process that has already quit, like the app by the time the script runs."""
+    child = subprocess.Popen(["true"])
+    child.wait()
+    return child.pid
+
+
+def test_installer_replaces_the_app_from_the_dmg_and_reopens_it(tmp_path):
+    app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
+    dmg = tmp_path / "update.dmg"
+    dmg.write_bytes(b"dmg")
+    _app(tmp_path / "update.dmg.contents" / "Award Wallet.app", "0.6.0")
+    opened = _run(updates.installer_script(app=app, running=app, pid=_quit_pid(), dmg=dmg), tmp_path)
+    assert (app / "Contents" / "version").read_text() == "0.6.0"
+    assert not (tmp_path / "Applications" / "Award Wallet.app.old").exists() and not dmg.exists()
+    assert opened == [str(app)]
+
+
+def test_installer_keeps_the_old_app_when_the_copy_fails(tmp_path):
+    app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
+    dmg = tmp_path / "update.dmg"
+    dmg.write_bytes(b"dmg")
+    _app(tmp_path / "update.dmg.contents" / "Award Wallet.app", "0.6.0")
+    (tmp_path / "ditto-fails").touch()
+    opened = _run(updates.installer_script(app=app, running=app, pid=_quit_pid(), dmg=dmg), tmp_path)
+    assert (app / "Contents" / "version").read_text() == "0.5.1"
+    assert opened == [str(app)]
+
+
+def test_installer_never_copies_over_an_app_it_couldnt_move_aside(tmp_path):
+    app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
+    dmg = tmp_path / "update.dmg"
+    dmg.write_bytes(b"dmg")
+    _app(tmp_path / "update.dmg.contents" / "Award Wallet.app", "0.6.0")
+    (tmp_path / "mv-fails").touch()
+    opened = _run(updates.installer_script(app=app, running=app, pid=_quit_pid(), dmg=dmg), tmp_path)
+    assert sorted(path.name for path in (app / "Contents").iterdir()) == ["version"]
+    assert (app / "Contents" / "version").read_text() == "0.5.1"
+    assert opened == [str(app)]
+
+
+def test_the_installer_writes_what_it_did_next_to_the_app_log(tmp_path):
+    import logging.handlers
+
+    diagnostics = tmp_path / "Diagnostics"
+    diagnostics.mkdir()
+    handler = logging.handlers.RotatingFileHandler(diagnostics / "award-wallet.log")
+    logging.getLogger().addHandler(handler)
+    try:
+        updates._run_installer("echo Installed it", tmp_path)
+    finally:
+        logging.getLogger().removeHandler(handler)
+        handler.close()
+    log = diagnostics / "install.log"
+    _eventually(lambda: "Installed it" in log.read_text())
+    assert f"Award Wallet {__version__} hands over to" in log.read_text()
+
+
+def test_bundle_version_reads_the_info_plist(tmp_path):
+    import plistlib
+
+    app = tmp_path / "Award Wallet.app"
+    assert updates.bundle_version(app) is None
+    (app / "Contents").mkdir(parents=True)
+    (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleShortVersionString": "0.6.0"}))
+    assert updates.bundle_version(app) == "0.6.0"
+
+
+def test_installer_moves_the_app_into_applications(tmp_path):
+    running = _app(tmp_path / "Downloads" / "Award Wallet.app", "0.6.0")
+    target = tmp_path / "Applications" / "Award Wallet.app"
+    opened = _run(updates.installer_script(app=target, running=running, pid=_quit_pid(), source=running), tmp_path)
+    assert (target / "Contents" / "version").read_text() == "0.6.0"
+    assert opened == [str(target)]

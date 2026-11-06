@@ -6,6 +6,7 @@ import os
 import pytest
 
 from award_wallet import fetching
+from award_wallet.providers.american import American
 from award_wallet.providers.chase import Chase
 
 CHROME = os.environ.get("AW_BROWSER_PATH") or next(
@@ -50,9 +51,9 @@ def test_a_confirm_its_you_page_drawn_in_web_components_is_recognized(browser):
 def read(browser):
     page = browser.new_page()
 
-    def read(body: str) -> int | None:
+    def read(body: str, provider=None) -> int | None:
         page.set_content(f"<!doctype html><html><body>{body}</body></html>")
-        return fetching.read_balance(page, Chase())[0]
+        return fetching.read_balance(page, provider or Chase())[0]
 
     yield read
     page.close()
@@ -108,3 +109,27 @@ def test_gives_up_rather_than_guess(read):
     # Still loading.
     assert read(rewards_box(f"<a class=row><div class=amount></div><div>{POINTS}</div></a>")) is None
     assert read("<p>Welcome back</p>") is None
+
+
+# American's account summary: award miles next to Loyalty Points (status), lifetime miles toward
+# Million Miler, and card offers in miles. Only the award miles are the balance.
+AA_OFFER = "<aside><p>Earn up to 60,000 miles with an AAdvantage<sup>®</sup> card</p></aside>"
+
+
+def test_american_reads_award_miles_from_its_own_tile(read):
+    tiles = (
+        "<section><div class=tile><h3>Award miles</h3><p>48,210</p></div>"
+        "<div class=tile><h3>Loyalty Points</h3><p>12,500</p></div>"
+        "<div class=tile><h3>Million Miler<sup>™</sup> lifetime miles</h3><p>231,004</p></div></section>"
+    )
+    assert read(AA_OFFER + tiles, American()) == 48210
+
+
+def test_american_reads_award_miles_from_a_list_of_numbers(read):
+    summary = "<dl><dt>Award miles</dt><dd>48,210</dd><dt>Loyalty Points</dt><dd>12,500</dd></dl>"
+    assert read(summary + AA_OFFER, American()) == 48210
+    assert read("<p>Mileage balance: 48,210</p>" + AA_OFFER, American()) == 48210
+
+
+def test_american_never_takes_an_offer_for_the_balance(read):
+    assert read("<header>Hi, Rafael</header>" + AA_OFFER, American()) is None

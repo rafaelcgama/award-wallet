@@ -3,8 +3,24 @@
 {% block head %}{% if busy %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
 {% block content %}
 {% if available_update %}
-<div class="flash flash-info" role="status">
-  Award Wallet {{ available_update.version }} is available. <a href="/about?check=1">Update now</a>
+<div class="banner" role="status">
+  <span>Award Wallet {{ available_update.version }} is available.</span>
+  {% if can_install %}
+  <form method="post" action="/update" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="button" data-busy="Starting…">Update now</button>
+  </form>
+  {% else %}
+  <a class="button" href="/about?check=1">How to update</a>
+  {% endif %}
+</div>
+{% elif runs_from %}
+<div class="banner" role="status">
+  <span>Award Wallet is running from {{ runs_from }}, not your Applications folder.</span>
+  <form method="post" action="/move-to-applications" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="button" data-busy="Moving…">Move to Applications</button>
+  </form>
 </div>
 {% endif %}
 <div class="page-header">
@@ -18,7 +34,7 @@
     {% if can_refresh %}
     <form method="post" action="/refresh" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button type="submit" class="button button-secondary"{% if busy %} disabled{% endif %}>Refresh now</button>
+      <button type="submit" class="button button-secondary" data-busy="Refreshing…"{% if busy %} disabled{% endif %}>{% if busy %}Refreshing…{% else %}Refresh now{% endif %}</button>
     </form>
     {% endif %}
     <a class="button" href="/accounts/new">Link a program</a>
@@ -28,7 +44,7 @@
 {% if not summaries %}
 <section class="card empty">
   <h2>Nothing here yet</h2>
-  <p class="muted">Link United, Chase or Capital One to see your balances side by side.</p>
+  <p class="muted">Link American, United, Chase or Capital One to see your balances side by side.</p>
   <a class="button" href="/accounts/new">Link your first program</a>
 </section>
 {% else %}
