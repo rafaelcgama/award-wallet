@@ -6,7 +6,7 @@ from award_wallet.services.refresh import can_fetch
 
 from ..deps import CsrfProtected, CurrentUser, DbSession
 from ..templating import flash, templates
-from .about import check_in_background
+from .about import can_self_update, check_in_background, outside_applications
 
 router = APIRouter()
 
@@ -29,6 +29,8 @@ def dashboard(request: Request, db: DbSession, user: CurrentUser):
             "summaries": summaries,
             "can_refresh": can_refresh,
             "available_update": getattr(state, "available_update", None),
+            "can_install": can_self_update(request),
+            "runs_from": outside_applications(request),
         },
     )
 

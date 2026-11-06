@@ -8,7 +8,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from award_wallet import __version__
+from award_wallet import __version__, updates
 from award_wallet.config import Settings
 from award_wallet.db import create_db_engine, make_sessionmaker, upgrade_database
 from award_wallet.security.vault import Vault
@@ -54,6 +54,7 @@ def create_app(settings: Settings) -> FastAPI:
     # Set by the Mac app: closes the window, which quits the app.
     app.state.quit_app = None
     app.state.available_update = None
+    app.state.updater = updates.Updater()
 
     app.add_middleware(
         SessionMiddleware,

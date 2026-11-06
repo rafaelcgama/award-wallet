@@ -8,9 +8,9 @@ from award_wallet.services import accounts, balances
 from conftest import link, post_form
 
 
-def test_provider_picker_lists_the_three_programs(client):
+def test_provider_picker_lists_every_program(client):
     page = client.get("/accounts/new").text
-    for name in ("United Airlines", "Chase", "Capital One"):
+    for name in ("American Airlines", "United Airlines", "Chase", "Capital One"):
         assert name in page
 
 
@@ -152,3 +152,20 @@ def test_rewards_links_open_each_program_site(client):
     for page in (client.get("/").text, client.get(f"/accounts/{account_id}").text):
         assert page.count('href="https://ultimaterewards.chase.com"') == 2
         assert 'target="_blank"' in page
+
+
+def test_american_airlines_can_be_linked(client):
+    page = client.get("/accounts/new").text
+    assert "American Airlines" in page and "AAdvantage" in page
+    form = client.get("/accounts/new?provider=american").text
+    assert "AAdvantage number or username" in form
+    account_id = link(client, "american", credential_username="12345678", credential_password="pw")
+    assert "AAdvantage" in client.get(f"/accounts/{account_id}").text
+
+
+def test_american_airlines_reads_award_miles_not_loyalty_points():
+    from award_wallet.providers import get_provider
+
+    american = get_provider("american")
+    assert american.supports_fetch and american.unit == "miles"
+    assert american.balance_url.startswith("https://www.aa.com/")

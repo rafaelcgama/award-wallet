@@ -2,7 +2,8 @@
 
 A Mac app that shows all your airline miles and credit card points in one place. It signs in to
 each program for you, reads the balance, and keeps the history, so you don't have to visit every
-site. Programs so far: United MileagePlus, Chase Ultimate Rewards and Capital One Miles.
+site. Programs so far: American AAdvantage, United MileagePlus, Chase Ultimate Rewards and
+Capital One Miles.
 
 It's a personal app: everything stays on your Mac, nothing runs in the background, and nothing
 sits in the menu bar. Closing the window quits it.
@@ -10,7 +11,8 @@ sits in the menu bar. Closing the window quits it.
 ## Install
 
 1. Download the newest `Award-Wallet-vX.Y.Z.dmg` from the repository's **Releases** page.
-2. Open it and drag **Award Wallet** onto **Applications**.
+2. Open it and drag **Award Wallet** onto **Applications**. (Opened straight from the .dmg, it
+   offers to move itself there.)
 3. The first time only: the app isn't signed with a paid Apple developer certificate, so macOS
    says it "could not verify" Award Wallet. Click **Done**, then either run
    `xattr -dr com.apple.quarantine "/Applications/Award Wallet.app"` in Terminal, or go to
@@ -38,8 +40,14 @@ the app uses to sign in to the programs' websites.
 ## Updating
 
 The app checks for a new version each time it opens and shows a banner when there is one. Click
-**Update now**, then **Install**: it downloads the new version, closes, replaces itself and
-reopens. Your programs and logins are kept. **Help → About Award Wallet** shows your version.
+**Update now**: a progress bar follows the download, then the app closes, replaces itself in your
+Applications folder and reopens on its own. Your programs and logins are kept. **Help → About
+Award Wallet** shows your version and checks again.
+
+Opened from anywhere but Applications (the .dmg, or Downloads), the app shows **Move to
+Applications**, which puts it there and reopens it from there. Then eject the .dmg or delete the
+other copy, so you don't open an old one by mistake. If an update ever goes wrong, `install.log`
+in Diagnostics says what happened.
 
 ## Your data
 
@@ -74,7 +82,7 @@ src/award_wallet/
   fetching.py    signs in with Chrome, in each program's own profile, and reads a balance
   providers/     one module per program: where its balance page is and how to read it
   services/      accounts, balances, background refresh
-  updates.py     Check for Updates and self-install
+  updates.py     Check for Updates, one-click install, Move to Applications
   web/           pages, templates and CSS
   models.py      tables: loyalty accounts, balance snapshots, expiration lots
   migrations/    database schema versions
