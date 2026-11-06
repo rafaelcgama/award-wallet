@@ -1,5 +1,4 @@
 import threading
-from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -13,15 +12,6 @@ router = APIRouter()
 
 # How long the "Installing" page shows before the app quits to replace itself.
 QUIT_DELAY = 1.5
-
-
-def _data_folder(database_url: str) -> str | None:
-    prefix = "sqlite:///"
-    if not database_url.startswith(prefix):
-        return None
-    folder = Path(database_url.removeprefix(prefix)).resolve().parent
-    home = Path.home()
-    return f"~/{folder.relative_to(home)}" if folder.is_relative_to(home) else str(folder)
 
 
 def can_self_update(request: Request) -> bool:
@@ -61,7 +51,6 @@ def about(request: Request, user: CurrentUser, check: bool = False):
     context = {
         "user": user,
         "version": __version__,
-        "data_folder": _data_folder(settings.database_url),
         "checked": check,
         "release": None,
         "update_error": None,

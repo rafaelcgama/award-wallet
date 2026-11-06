@@ -4,6 +4,12 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-06
+
+### Changed
+- The About window no longer shows the folder your data is kept in. Nothing moved: it's still
+  `~/Library/Application Support/Award Wallet`, as the README says.
+
 ## [0.10.0] - 2026-11-06
 
 ### Added

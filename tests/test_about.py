@@ -63,6 +63,13 @@ def test_about_page_shows_version(settings):
         assert "Check for updates" in page.text
 
 
+def test_about_page_leaves_out_the_data_folder(settings, tmp_path):
+    with _window(settings) as window:
+        page = window.get("/about")
+    assert "Your data is kept" not in page.text
+    assert str(tmp_path.resolve()) not in page.text
+
+
 def _fake_github(monkeypatch, payload=None, error=None):
     def answer(request, timeout):
         if error:
