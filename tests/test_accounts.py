@@ -169,3 +169,47 @@ def test_american_airlines_reads_award_miles_not_loyalty_points():
     american = get_provider("american")
     assert american.supports_fetch and american.unit == "miles"
     assert american.balance_url.startswith("https://www.aa.com/")
+
+
+def _local_noon() -> datetime:
+    return datetime.now(UTC).astimezone().replace(hour=12, minute=0, second=0, microsecond=0)
+
+
+def test_history_keeps_changes_and_one_entry_a_day(client, db):
+    account = db.get(LoyaltyAccount, link(client, "united"))
+    noon = _local_noon()
+
+    def seen(balance, when):
+        balances.record_balance(db, account, balance=balance, source=BalanceSource.SYNC, captured_at=when)
+
+    seen(100, noon - timedelta(days=2))
+    seen(100, noon - timedelta(days=1))  # the same balance: nothing new
+    seen(90, noon - timedelta(hours=2))  # a change today
+    seen(80, noon - timedelta(hours=1))  # another change today takes its place
+    seen(80, noon)
+
+    stored = db.scalars(select(BalanceSnapshot).where(BalanceSnapshot.account_id == account.id)).all()
+    assert sorted(snapshot.balance for snapshot in stored) == [80, 100]
+    history = balances.balance_history(db, account)
+    assert [(s.balance, balances.local_day(s.captured_at)) for s in history] == [
+        (80, noon.date()),
+        (100, (noon - timedelta(days=2)).date()),
+    ]
+
+
+def test_history_from_older_versions_shows_each_change_once(client, db):
+    # Before 0.7 every refresh added an entry, like four of 49,333 in one morning.
+    account = db.get(LoyaltyAccount, link(client, "american"))
+    noon = _local_noon()
+    kept = [(noon - timedelta(days=2), 50000), (noon - timedelta(days=1), 49333)]
+    kept += [(noon + timedelta(minutes=minutes), 49333) for minutes in (0, 2, 20, 22)]
+    for when, balance in kept:
+        db.add(BalanceSnapshot(account_id=account.id, balance=balance, unit="miles", source="sync", captured_at=when))
+    db.commit()
+
+    history = balances.balance_history(db, account)
+    assert [(s.balance, balances.local_day(s.captured_at)) for s in history] == [
+        (49333, (noon - timedelta(days=1)).date()),
+        (50000, (noon - timedelta(days=2)).date()),
+    ]
+    assert balances.latest_snapshots(db, [account.id])[account.id].captured_at == noon + timedelta(minutes=22)

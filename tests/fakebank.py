@@ -12,6 +12,8 @@ import time
 
 import uvicorn
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
@@ -83,6 +85,7 @@ class FakeBank:
         clears_form_once: bool = False,
         newsletter: bool = False,
         says_once: str = "",
+        needs_keys: bool = False,
     ):
         self.two_step, self.in_iframe, self.balance, self.shows = two_step or sign_in_on_page, in_iframe, balance, shows
         self.sign_in_on_page, self.confirm_in_place, self.clears_form_once = (
@@ -98,9 +101,18 @@ class FakeBank:
         self.newsletter, self.subscribed = newsletter, []
         # With clears_form_once, a message shown above the emptied form, like "Please try again".
         self.says_once = says_once
+        # Turn down a password that went into the box without a key pressed for each letter, as
+        # Capital One does with a box filled in all at once.
+        self.needs_keys = needs_keys
+        self.user_agents: list[str] = []
+
+    async def _note_browser(self, request: Request, call_next):
+        self.user_agents.append(request.headers.get("user-agent", ""))
+        return await call_next(request)
 
     def app(self) -> Starlette:
         return Starlette(
+            middleware=[Middleware(BaseHTTPMiddleware, dispatch=self._note_browser)],
             routes=[
                 Route("/account", self.account),
                 Route("/signin", self.signin, methods=["GET", "POST"]),
@@ -108,7 +120,7 @@ class FakeBank:
                 Route("/verify", self.verify, methods=["GET", "POST"]),
                 Route("/search", self.search),
                 Route("/subscribe", self.subscribe),
-            ]
+            ],
         )
 
     async def subscribe(self, request: Request):
@@ -150,6 +162,11 @@ class FakeBank:
         if self.clears_form_once and self.logins == 1:
             said = f"<p>{self.says_once}</p>" if self.says_once else ""
             return page(said + self._form(username=str(username) if self.two_step else None))
+        if self.needs_keys and int(str(form.get("presses") or 0)) < len(str(form.get("password", ""))):
+            return page(
+                "<p>We didn't recognize that info</p>"
+                "<p>Double-check your username and password and try signing in again.</p>" + self._form()
+            )
         if username != USERNAME or form.get("password") != PASSWORD:
             return page("<p>The username or password you entered is incorrect.</p>" + self._form())
         if request.cookies.get("device") in self.trusted:
@@ -191,9 +208,17 @@ class FakeBank:
             else ("<input name=username autocomplete=username>")
         )
         target = "_top" if self.in_iframe else "_self"
+        # Counts the keys pressed in the password box, sent along with the form.
+        presses, counter = "", ""
+        if self.needs_keys:
+            presses = "<input type=hidden name=presses value=0>"
+            counter = (
+                "<script>for (const box of document.querySelectorAll('input[type=password]')) "
+                "box.addEventListener('keydown', () => { box.form.elements.namedItem('presses').value++; });</script>"
+            )
         return (
-            f"<form method=post action='/signin/form' target='{target}'>{hidden}"
-            "<input type=password name=password><button>Sign in</button></form>"
+            f"<form method=post action='/signin/form' target='{target}'>{hidden}{presses}"
+            f"<input type=password name=password><button>Sign in</button></form>{counter}"
         )
 
     def expire_sessions(self) -> None:

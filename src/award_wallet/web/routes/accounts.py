@@ -9,6 +9,7 @@ from starlette.datastructures import FormData
 from award_wallet.models import BalanceSource, LoyaltyAccount, User
 from award_wallet.providers import Expiration, Provider, UnknownProvider, all_providers, get_provider
 from award_wallet.services import InvalidInput, accounts, balances
+from award_wallet.services.dashboard import checked_at
 
 from ..deps import CsrfProtected, CurrentUser, DbSession, PostedForm, VaultDep
 from ..templating import flash, templates
@@ -42,7 +43,7 @@ def link_account(request: Request, db: DbSession, vault: VaultDep, user: Current
         context = {"user": user, "provider": provider, "label": label, "error": str(exc)}
         return templates.TemplateResponse(request, "account_form.html", context, status_code=400)
     flash(request, f"{provider.name} is linked.")
-    _start_sign_in(request, account)
+    _fetch_out_of_sight(request, account)
     return RedirectResponse(f"/accounts/{account.id}", status_code=303)
 
 
@@ -105,15 +106,17 @@ def update_login(
     ):
         request.app.state.refresher.forget_browser(account.id)
     flash(request, "Login saved.")
-    _start_sign_in(request, account)
+    _fetch_out_of_sight(request, account)
     return RedirectResponse(f"/accounts/{account.id}", status_code=303)
 
 
 @router.post("/{account_id}/sign-in", dependencies=[CsrfProtected])
-def sign_in(request: Request, db: DbSession, user: CurrentUser, account_id: str):
+def sign_in(request: Request, db: DbSession, user: CurrentUser, account_id: str, form: PostedForm):
     account = accounts.get_account(db, user.id, account_id)
     _start_sign_in(request, account)
-    return RedirectResponse(f"/accounts/{account.id}", status_code=303)
+    # From a card on the dashboard, stay on the dashboard.
+    back = "/" if form.get("back") == "dashboard" else f"/accounts/{account.id}"
+    return RedirectResponse(back, status_code=303)
 
 
 @router.post("/{account_id}/refresh", dependencies=[CsrfProtected])
@@ -124,11 +127,18 @@ def refresh(request: Request, db: DbSession, user: CurrentUser, account_id: str)
     return RedirectResponse(f"/accounts/{account.id}", status_code=303)
 
 
+def _fetch_out_of_sight(request: Request, account: LoyaltyAccount) -> None:
+    """Sign in and fetch the balance with no window. If the site wants you (a code, say), the
+    program shows a Sign in button: a window opens only when you click it."""
+    if request.app.state.settings.auto_fetch:
+        request.app.state.refresher.refresh_one(account)
+
+
 def _start_sign_in(request: Request, account: LoyaltyAccount) -> None:
     """Open the program's site in a Chrome window to sign in and fetch the balance."""
     if request.app.state.settings.auto_fetch and request.app.state.refresher.sign_in(account):
         name = get_provider(account.provider).name
-        flash(request, f"A Chrome window is opening to sign in to {name}. Enter the security code there if asked.")
+        flash(request, f"A Chrome window is opening to sign in to {name}. Finish there what {name} asks for.")
 
 
 @router.post("/{account_id}/login/remove", dependencies=[CsrfProtected])
@@ -160,12 +170,14 @@ def _render_account(
     **extra: Any,
 ):
     history = balances.balance_history(db, account)
+    newest = balances.latest_snapshots(db, [account.id]).get(account.id)
     context = {
         "user": user,
         "account": account,
+        "checked_at": checked_at(account, newest),
         "provider": get_provider(account.provider),
         "history": history,
-        "latest": history[0] if history else None,
+        "latest": newest,
         "posted": {},
         **extra,
     }

@@ -1,3 +1,4 @@
+import base64
 import glob
 import json
 import os
@@ -76,19 +77,19 @@ def test_after_one_security_code_refreshes_need_nothing(site, tmp_path, options)
     bank, provider = site(**options)
     profile = tmp_path / "profile"
 
-    # A refresh that's not allowed to ask stops at the site's code request.
-    with pytest.raises(fetching.NeedsPerson):
-        fetch(provider, profile, may_ask=False)
+    # A refresh shows nothing: it stops at the site's code request, and says to click Sign in.
+    with pytest.raises(fetching.NeedsPerson, match="Click Sign in"):
+        fetch(provider, profile)
 
-    # Normally the window comes up for the code (here, type_code plays the person).
-    assert fetch(provider, profile, while_waiting=type_code) == 52300
+    # Sign in opens the window, where you type the code (here, type_code plays you).
+    assert fetch(provider, profile, with_person=True, while_waiting=type_code) == 52300
     assert bank.codes_asked == 2
 
     # Later refreshes use the same Chrome profile, so the site knows this browser: no code, even
     # after the site's session ends and the login has to be typed again.
     bank.expire_sessions()
     bank.balance = 61000
-    assert fetch(provider, profile, may_ask=False) == 61000
+    assert fetch(provider, profile) == 61000
     assert bank.codes_asked == 2
     assert bank.searches == []  # the search box never got the username
 
@@ -100,7 +101,7 @@ def test_a_username_box_on_the_account_page_is_filled(site, tmp_path, caplog):
     bank.trusted.add("known-mac")
     cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
     with caplog.at_level("INFO", logger="award_wallet.fetching"):
-        assert fetch(provider, tmp_path / "profile", may_ask=False, seed_cookies=cookies) == 52300
+        assert fetch(provider, tmp_path / "profile", seed_cookies=cookies) == 52300
     assert "submitted the username" in caplog.text and "clicked the form's button" in caplog.text
     assert bank.searches == []
 
@@ -112,32 +113,132 @@ def test_an_email_box_that_isnt_the_login_is_left_alone(site, tmp_path, monkeypa
     bank, provider = site(shows="below", newsletter=True)
     bank.trusted.add("known-mac")
     cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
-    assert fetch(provider, tmp_path / "profile", may_ask=False, seed_cookies=cookies) == 52300
+    assert fetch(provider, tmp_path / "profile", seed_cookies=cookies) == 52300
     assert bank.subscribed == [] and bank.searches == []
 
 
 @needs_browser
-def test_confirming_its_you_brings_the_window_up_with_a_note(site, tmp_path, caplog, monkeypatch):
+def test_a_refresh_that_needs_you_stops_and_says_why(site, tmp_path, caplog, monkeypatch):
     # Chase asks on its dashboard's own address, where the run otherwise keeps looking for the
-    # number: the window comes up right away instead, and the app says what to do.
+    # number: the refresh stops right away instead, with a screenshot, and nothing pops up.
+    monkeypatch.setattr(fetching, "CHALLENGE_GRACE", 60)
+    bank, provider = site(confirm_in_place=True)
+    with caplog.at_level("INFO", logger="award_wallet.fetching"):
+        with pytest.raises(fetching.NeedsPerson) as stopped:
+            fetch(provider, tmp_path / "profile", screenshot_to=tmp_path / "fake.png")
+    assert str(stopped.value) == (
+        "fake wants to confirm it's you, usually only the first time. Click Sign in to do it; "
+        "after that, refreshes run on their own."
+    )
+    assert "the site asks to confirm it's you" in caplog.text
+    assert (tmp_path / "fake.png").exists()
+
+
+@needs_browser
+def test_at_the_window_the_app_says_what_the_site_wants(site, tmp_path, monkeypatch):
     monkeypatch.setattr(fetching, "CHALLENGE_GRACE", 60)
     bank, provider = site(confirm_in_place=True)
     notes = []
-    with caplog.at_level("INFO", logger="award_wallet.fetching"):
-        balance = fetch(
-            provider,
-            tmp_path / "profile",
-            while_waiting=type_code,
-            on_needs_you=notes.append,
-            screenshot_to=tmp_path / "fake.png",
-        )
+
+    def you_after_the_note(page):
+        if notes:
+            type_code(page)
+
+    balance = fetch(
+        provider, tmp_path / "profile", with_person=True, while_waiting=you_after_the_note, on_needs_you=notes.append
+    )
     assert balance == 52300
     assert notes == [
         "fake wants to confirm it's you, usually only the first time. Finish it in the fake window; "
         "after that, refreshes run on their own."
     ]
-    assert "the site asks to confirm it's you" in caplog.text
-    assert (tmp_path / "fake-needs-you.png").exists()
+
+
+def test_a_refresh_runs_hidden_and_a_sign_in_gets_a_window(site, tmp_path):
+    bank, provider = site()
+    launched = []
+
+    def launcher(profile, headless):
+        launched.append(headless)
+        raise RuntimeError("enough")
+
+    for with_person in (False, True):
+        with pytest.raises(RuntimeError):
+            fetching.fetch_balance(provider, LOGIN, tmp_path / "p", with_person=with_person, launcher=launcher)
+    assert launched == [True, False]
+
+
+@needs_browser
+def test_hidden_chrome_tells_sites_it_is_chrome(site, tmp_path):
+    # Chrome's hidden mode calls itself HeadlessChrome, which some sites turn away.
+    bank, provider = site()
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+    assert fetch(provider, tmp_path / "profile", seed_cookies=cookies) == 52300
+    assert bank.user_agents and all("Chrome/" in agent and "Headless" not in agent for agent in bank.user_agents)
+
+
+@needs_browser
+def test_the_login_is_typed_a_key_at_a_time(site, tmp_path):
+    # Capital One turns down a password that went into its box all at once.
+    bank, provider = site(needs_keys=True)
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+    assert fetch(provider, tmp_path / "profile", seed_cookies=cookies) == 52300
+    assert bank.logins == 1
+
+
+def you_sign_in(page):
+    """You, at the window, typing your login over whatever the site shows."""
+    box = page.locator("input[type=password]")
+    if box.count() and box.is_visible() and not box.input_value():
+        name = page.locator("input[name=username]")
+        if name.count() and name.is_visible() and not name.input_value():
+            name.press_sequentially(USERNAME)
+        box.press_sequentially(PASSWORD)
+        box.press("Enter")
+
+
+@needs_browser
+@pytest.mark.parametrize("type_login", [True, False])
+def test_a_login_you_fix_at_the_window_is_kept(site, tmp_path, type_login):
+    bank, provider = site()
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+    notes, kept = [], []
+
+    def you_after_the_note(page):
+        if notes:
+            you_sign_in(page)
+
+    balance = fetching.fetch_balance(
+        provider,
+        {"username": USERNAME, "password": "old password"},
+        tmp_path / "profile",
+        headless=True,
+        with_person=True,
+        type_login=type_login,
+        seed_cookies=cookies,
+        while_waiting=you_after_the_note,
+        on_needs_you=notes.append,
+        on_new_login=kept.append,
+    )
+    assert balance == 52300
+    assert notes == [
+        "fake didn't take the saved login. Sign in in the fake window, and Award Wallet keeps the login that works."
+    ]
+    assert kept == [{"username": USERNAME, "password": PASSWORD}]
+    assert bank.logins == (2 if type_login else 1)  # the saved login is tried once at most
+
+
+@needs_browser
+def test_a_login_that_already_worked_is_not_kept_again(site, tmp_path):
+    bank, provider = site()
+    bank.trusted.add("known-mac")
+    cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
+    kept = []
+    balance = fetch(provider, tmp_path / "profile", with_person=True, seed_cookies=cookies, on_new_login=kept.append)
+    assert balance == 52300 and kept == []
 
 
 @needs_browser
@@ -146,7 +247,7 @@ def test_a_login_the_site_cleared_is_typed_once_more(site, tmp_path, caplog):
     bank.trusted.add("known-mac")
     cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
     with caplog.at_level("INFO", logger="award_wallet.fetching"):
-        assert fetch(provider, tmp_path / "profile", may_ask=False, seed_cookies=cookies) == 52300
+        assert fetch(provider, tmp_path / "profile", seed_cookies=cookies) == 52300
     assert bank.logins == 2
     assert "the site cleared the login" in caplog.text
 
@@ -156,7 +257,7 @@ def test_a_form_that_comes_back_with_a_message_is_left_to_you(site, tmp_path):
     # Whatever the site said, the app doesn't know it: it never types the password again over it.
     bank, provider = site(clears_form_once=True, says_once="Something about your sign-in needs attention.")
     with pytest.raises(fetching.NeedsPerson):
-        fetch(provider, tmp_path / "profile", may_ask=False)
+        fetch(provider, tmp_path / "profile")
     assert bank.logins == 1
 
 
@@ -173,7 +274,7 @@ def test_cookies_kept_by_older_versions_carry_over(site, tmp_path):
     bank, provider = site()
     bank.trusted.add("known-mac")
     cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
-    assert fetch(provider, tmp_path / "profile", may_ask=False, seed_cookies=cookies) == 52300
+    assert fetch(provider, tmp_path / "profile", seed_cookies=cookies) == 52300
     assert bank.codes_asked == 0
 
 
@@ -182,7 +283,7 @@ def test_a_balance_counts_once_it_stops_changing(site, tmp_path):
     bank, provider = site(shows="counting", balance=163918)
     bank.trusted.add("known-mac")
     cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
-    assert fetch(provider, tmp_path / "profile", may_ask=False, seed_cookies=cookies) == 163918
+    assert fetch(provider, tmp_path / "profile", seed_cookies=cookies) == 163918
 
 
 @needs_browser
@@ -191,7 +292,7 @@ def test_scrolls_to_a_balance_that_loads_when_seen(site, tmp_path, monkeypatch):
     bank, provider = site(shows="below")
     bank.trusted.add("known-mac")
     cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
-    assert fetch(provider, tmp_path / "profile", may_ask=False, seed_cookies=cookies) == 52300
+    assert fetch(provider, tmp_path / "profile", seed_cookies=cookies) == 52300
 
 
 @needs_browser
@@ -199,7 +300,7 @@ def test_the_sites_own_error_is_passed_on(site, tmp_path, monkeypatch):
     monkeypatch.setattr(fetching, "TROUBLE_GRACE", 1)
     bank, provider = site(shows="trouble")
     with pytest.raises(fetching.FetchProblem, match="fake says: “We can’t access your account information right now"):
-        fetch(provider, tmp_path / "profile", while_waiting=type_code)
+        fetch(provider, tmp_path / "profile", with_person=True, while_waiting=type_code)
 
 
 @needs_browser
@@ -228,7 +329,7 @@ def test_the_log_shows_each_step_but_never_the_login(site, tmp_path, caplog):
     bank, provider = site()
     with caplog.at_level("INFO", logger="award_wallet.fetching"):
         with pytest.raises(fetching.NeedsPerson):
-            fetch(provider, tmp_path / "profile", may_ask=False)
+            fetch(provider, tmp_path / "profile")
     assert "submitted the login" in caplog.text
     assert "/verify" in caplog.text
     assert PASSWORD not in caplog.text and USERNAME not in caplog.text
@@ -254,6 +355,7 @@ def test_chromes_own_prompts_are_turned_off(tmp_path):
     settings = json.loads(preferences.read_text())
     assert settings["credentials_enable_service"] is False
     assert settings["profile"] == {"password_manager_enabled": False, "exit_type": "Normal", "exited_cleanly": True}
+    assert settings["autofill"] == {"enabled": False, "profile_enabled": False, "credit_card_enabled": False}
 
     # Chrome's own settings are kept, and a run that was cut short doesn't ask to restore pages.
     settings["profile"].update(exit_type="Crashed", name="Person 1")
@@ -294,6 +396,9 @@ def test_which_box_wants_the_username(field, rank):
         ("That username and password combination doesn't match our records", True),
         ("The account information you entered is incorrect", True),
         ("Invalid username or password", True),
+        # Capital One, 2026-11-06.
+        ("We didn't recognize that info\nDouble-check your username and password and try signing in again.", True),
+        ("We didn’t recognize this device, so we need to confirm it’s you.", False),
         ("We don’t recognize this device. Enter your password to continue.", False),
         ("Username\nPassword\nRemember me\nForgot username/password?\nSign in", False),
         ("Let’s make sure it’s you\nWe’ll text a one-time code to your phone.", False),
@@ -315,3 +420,45 @@ def test_a_sites_numbered_servers_count_as_the_same_site():
     assert not fetching._at_balance_page("https://secure.chase.com/web/auth/#/logon/logon/chaseOnline", dashboard)
     assert not fetching._same_site("https://www.chase.com.example.net/", dashboard)
     assert not fetching._same_site("about:blank", dashboard)
+
+
+# What a saved screenshot shows at three spots: the box on the page, the box in the frame, and the
+# page around them.
+_PIXELS = """() => new Promise((done) => {
+  const image = document.images[0];
+  const read = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const pen = canvas.getContext("2d");
+    pen.drawImage(image, 0, 0);
+    const at = (x, y) => Array.from(pen.getImageData(x, y, 1, 1).data.slice(0, 3));
+    done([at(120, 40), at(120, 120), at(500, 300)]);
+  };
+  if (image.complete) read(); else image.onload = read;
+})"""
+
+
+@needs_browser
+def test_a_screenshot_blacks_out_what_was_typed(tmp_path):
+    # Screenshots go in the Diagnostics folder, which is meant to be safe to send.
+    playwright, context = fetching.browser_launcher(tmp_path / "profile", headless=True)
+    try:
+        page = context.pages[0] if context.pages else context.new_page()
+        box = "position:absolute;left:20px;width:200px;height:40px"
+        page.set_content(
+            "<body style='margin:0;background:#fff'>"
+            f"<input style='{box};top:20px' value='rafael'>"
+            f"<iframe style='{box};top:100px;border:0' srcdoc=\"<body style='margin:0'>"
+            "<input style='width:200px;height:40px' value='123456'>\"></iframe></body>"
+        )
+        shot = tmp_path / "shot.png"
+        fetching._screenshot(page, shot)
+        viewer = context.new_page()
+        viewer.set_content(f"<img src='data:image/png;base64,{base64.b64encode(shot.read_bytes()).decode()}'>")
+        on_page, in_frame, around = viewer.evaluate(_PIXELS)
+    finally:
+        context.close()
+        playwright.stop()
+    assert on_page == in_frame == [0, 0, 0]
+    assert around == [255, 255, 255]

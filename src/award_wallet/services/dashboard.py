@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -17,12 +17,23 @@ class AccountSummary:
     latest: BalanceSnapshot | None
 
     @property
+    def checked_at(self) -> datetime | None:
+        return checked_at(self.account, self.latest)
+
+    @property
     def next_expiration(self) -> ExpirationLot | None:
         if self.latest is None:
             return None
         today = date.today()
         upcoming = (lot for lot in self.latest.expirations if lot.expires_on >= today)
         return min(upcoming, key=lambda lot: lot.expires_on, default=None)
+
+
+def checked_at(account: LoyaltyAccount, latest: BalanceSnapshot | None) -> datetime | None:
+    """When the balance was last seen: the newest history entry, or a later refresh that found the
+    same balance (which adds nothing to the history)."""
+    moments = [moment for moment in (latest and latest.captured_at, account.last_synced_at) if moment]
+    return max(moments, default=None)
 
 
 def summarize_accounts(db: Session, user_id: str) -> list[AccountSummary]:

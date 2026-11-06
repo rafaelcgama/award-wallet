@@ -1,5 +1,7 @@
 """Checks GitHub Releases for a newer version of the app."""
 
+import hashlib
+import hmac
 import json
 import logging
 import logging.handlers
@@ -18,12 +20,16 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 import certifi
 
 from award_wallet import __version__
 
 log = logging.getLogger(__name__)
+
+# Far more than the app's .dmg: a download that grows past this isn't the app.
+MAX_DOWNLOAD = 1024 * 1024 * 1024
 
 
 class UpdateCheckFailed(Exception):
@@ -36,6 +42,9 @@ class Release:
     page_url: str
     # The .dmg attached to the release, when there is one.
     download_url: str | None
+    # The .dmg's SHA-256, which GitHub works out when the release is published. A download that
+    # doesn't match it is thrown away.
+    download_sha256: str | None = None
 
 
 def parse_version(text: str) -> tuple[int, ...]:
@@ -53,15 +62,60 @@ def is_newer(candidate: str, current: str = __version__) -> bool:
     return padded(parse_version(candidate)) > padded(parse_version(current))
 
 
+class _HttpsOnly(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect only to another https address, so nobody on the way can swap a file."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urlsplit(newurl).scheme != "https":
+            raise urllib.error.URLError(f"won't follow a redirect away from https, to {urlsplit(newurl).scheme}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open(request: urllib.request.Request, timeout: float):
+    # The Mac app's bundled Python has no access to the system certificates, so bring our own.
+    context = ssl.create_default_context(cafile=certifi.where())
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=context), _HttpsOnly())
+    return opener.open(request, timeout=timeout)
+
+
+def _on_github(url: object, repo: str, kind: str) -> bool:
+    """Whether url is in this repository's releases on GitHub: its "download" files or its "tag"
+    pages. Nothing else is ever downloaded or linked to."""
+    if not isinstance(url, str):
+        return False
+    parts = urlsplit(url)
+    prefix = f"/{repo}/releases/{kind}/"
+    if (parts.scheme, parts.netloc) != ("https", "github.com") or parts.query or parts.fragment:
+        return False
+    if not parts.path.startswith(prefix):
+        return False
+    rest = [unquote(segment) for segment in parts.path.removeprefix(prefix).split("/")]
+    return all(segment not in ("", ".", "..") and not set(segment) & set("/\\") for segment in rest)
+
+
+def _dmg(data: dict, repo: str) -> tuple[str | None, str | None]:
+    """The release's .dmg, and its SHA-256 when GitHub lists one."""
+    assets = data.get("assets")
+    for asset in assets if isinstance(assets, list) else []:
+        if not isinstance(asset, dict) or not str(asset.get("name", "")).endswith(".dmg"):
+            continue
+        url = asset.get("browser_download_url")
+        if not _on_github(url, repo, "download"):
+            log.warning("Ignored a release download outside %s's releases", repo)
+            continue
+        digest = asset.get("digest")
+        found = re.fullmatch(r"sha256:([0-9a-f]{64})", digest) if isinstance(digest, str) else None
+        return url, found.group(1) if found else None
+    return None, None
+
+
 def latest_release(repo: str, timeout: float = 10) -> Release:
     request = urllib.request.Request(
         f"https://api.github.com/repos/{repo}/releases/latest",
         headers={"Accept": "application/vnd.github+json", "User-Agent": f"AwardWallet/{__version__}"},
     )
-    # The Mac app's bundled Python has no access to the system certificates, so bring our own.
-    context = ssl.create_default_context(cafile=certifi.where())
     try:
-        with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+        with _open(request, timeout) as response:
             data = json.load(response)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
@@ -70,17 +124,22 @@ def latest_release(repo: str, timeout: float = 10) -> Release:
                 "updates can't be checked automatically."
             ) from None
         raise UpdateCheckFailed(f"GitHub answered with an error ({exc.code}). Try again later.") from None
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         raise UpdateCheckFailed("Couldn't reach GitHub. Check your internet connection.") from None
 
     try:
         version = data["tag_name"]
         parse_version(version)
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, AttributeError):
         raise UpdateCheckFailed("The latest release has no version number.") from None
-    dmgs = [asset for asset in data.get("assets", []) if asset.get("name", "").endswith(".dmg")]
-    download_url = dmgs[0].get("browser_download_url") if dmgs else None
-    return Release(version=version.lstrip("v"), page_url=data.get("html_url", ""), download_url=download_url)
+    page_url = data.get("html_url")
+    download_url, download_sha256 = _dmg(data, repo)
+    return Release(
+        version=version.lstrip("v"),
+        page_url=page_url if _on_github(page_url, repo, "tag") else "",
+        download_url=download_url,
+        download_sha256=download_sha256,
+    )
 
 
 # Installing an update (the Mac app only) ------------------------------------------------------
@@ -91,6 +150,8 @@ def latest_release(repo: str, timeout: float = 10) -> Release:
 _INSTALLER = """#!/bin/bash
 # Written by Award Wallet to install itself once it has quit.
 set -u
+# The app keeps its own files private; an installed app is readable like any other.
+umask 022
 # Wait for the app to quit, for two minutes at most: never replace an app that's still running.
 waited=0
 while kill -0 {pid} 2>/dev/null; do
@@ -191,24 +252,38 @@ def where_it_runs(app: Path) -> str:
 
 
 def download(
-    url: str, destination: Path, timeout: float = 60, progress: Callable[[int, int | None], None] | None = None
+    url: str,
+    destination: Path,
+    *,
+    sha256: str,
+    timeout: float = 60,
+    progress: Callable[[int, int | None], None] | None = None,
 ) -> None:
-    """Save url to destination, calling progress(bytes so far, total bytes or None) as it goes."""
+    """Save url to destination, calling progress(bytes so far, total bytes or None) as it goes.
+
+    The file must have the SHA-256 GitHub gave for it, so a file changed on the way is never
+    installed: it's deleted instead."""
     request = urllib.request.Request(url, headers={"User-Agent": f"AwardWallet/{__version__}"})
-    context = ssl.create_default_context(cafile=certifi.where())
+    digest = hashlib.sha256()
     try:
-        with (
-            urllib.request.urlopen(request, timeout=timeout, context=context) as response,
-            destination.open("wb") as out,
-        ):
+        with _open(request, timeout) as response, destination.open("wb") as out:
             length = (getattr(response, "headers", None) or {}).get("Content-Length")
             total = int(length) if length and str(length).isdigit() else None
             done = 0
             while chunk := response.read(256 * 1024):
-                out.write(chunk)
                 done += len(chunk)
+                if done > MAX_DOWNLOAD:
+                    raise UpdateCheckFailed("The download is far bigger than the app, so it was stopped.")
+                digest.update(chunk)
+                out.write(chunk)
                 if progress:
                     progress(done, total)
+        if not hmac.compare_digest(digest.hexdigest(), sha256.lower()):
+            log.warning("The downloaded update doesn't match its release's SHA-256; it was deleted")
+            raise UpdateCheckFailed("The download didn't match the release, so nothing was installed. Try again.")
+    except UpdateCheckFailed:
+        destination.unlink(missing_ok=True)
+        raise
     except (urllib.error.URLError, TimeoutError, OSError):
         destination.unlink(missing_ok=True)
         raise UpdateCheckFailed("Couldn't download the update. Check your internet connection.") from None
@@ -316,9 +391,17 @@ class Updater:
         try:
             if not release.download_url:
                 raise UpdateCheckFailed("This release has no Mac app attached yet. Try again in a few minutes.")
+            if not release.download_sha256:
+                # Without it, a changed file couldn't be told apart from the real one.
+                raise UpdateCheckFailed("GitHub hasn't listed this release's checksum yet. Try again in a few minutes.")
             folder = Path(tempfile.mkdtemp(prefix="award-wallet-update-"))
             dmg = folder / "update.dmg"
-            download(release.download_url, dmg, progress=lambda done, total: self._set(done=done, total=total))
+            download(
+                release.download_url,
+                dmg,
+                sha256=release.download_sha256,
+                progress=lambda done, total: self._set(done=done, total=total),
+            )
             target = install_target(app)
             _run_installer(installer_script(app=target, running=app, pid=os.getpid(), dmg=dmg), folder)
         except UpdateCheckFailed as exc:

@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Updating · Award Wallet{% endblock %}
+{% block scripts %}<script src="/static/updating.js"></script>{% endblock %}
 {% block content %}
 <section class="card about" id="update" data-state="{{ progress.state }}">
   <img class="about-icon" src="/static/icon.png" alt="" width="96" height="96">
   <h1 id="update-title">{% if progress.state == "failed" %}The update didn't finish{% else %}Updating to {{ progress.version }}{% endif %}</h1>
   <div class="progress" role="progressbar" aria-labelledby="update-title" aria-valuemin="0" aria-valuemax="100"
        {% if progress.percent is not none %}aria-valuenow="{{ progress.percent }}"{% endif %}{% if progress.state == "failed" %} hidden{% endif %}>
-    <div class="progress-bar{% if progress.percent is none %} progress-bar-unknown{% endif %}" style="width: {{ progress.percent or 0 }}%"></div>
+    <div class="progress-bar{% if progress.percent is none %} progress-bar-unknown{% endif %}" data-percent="{{ progress.percent or 0 }}"></div>
   </div>
   <p class="muted" id="update-step">
     {% if progress.state == "installing" %}Installing. Award Wallet closes and reopens by itself in a moment.
@@ -21,47 +22,4 @@
     <a class="button button-secondary" href="/">Back to your points</a>
   </div>
 </section>
-<script>
-  // Follow the download until the app closes to install it.
-  (() => {
-    const box = document.getElementById("update");
-    const bar = box.querySelector(".progress-bar");
-    const meter = box.querySelector(".progress");
-    const step = document.getElementById("update-step");
-    const title = document.getElementById("update-title");
-    const actions = document.getElementById("update-actions");
-    const show = (status) => {
-      if (status.state === "failed") {
-        title.textContent = "The update didn't finish";
-        step.textContent = status.error;
-        meter.hidden = true;
-        actions.hidden = false;
-        return false;
-      }
-      if (status.percent === null) {
-        bar.classList.add("progress-bar-unknown");
-      } else {
-        bar.classList.remove("progress-bar-unknown");
-        bar.style.width = `${status.percent}%`;
-        meter.setAttribute("aria-valuenow", status.percent);
-      }
-      if (status.state === "installing") {
-        step.textContent = "Installing. Award Wallet closes and reopens by itself in a moment.";
-        return false;
-      }
-      step.textContent = status.percent === null ? "Downloading…" : `Downloading (${status.percent}%)…`;
-      return true;
-    };
-    const poll = async () => {
-      try {
-        const response = await fetch("/update/status", { cache: "no-store" });
-        if (response.ok && !show(await response.json())) return;
-      } catch (error) {
-        return; // the app is closing to install the update
-      }
-      setTimeout(poll, 400);
-    };
-    if (box.dataset.state === "downloading") poll();
-  })();
-</script>
 {% endblock %}

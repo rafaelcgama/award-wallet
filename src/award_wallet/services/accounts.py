@@ -60,6 +60,16 @@ def update_credentials(db: Session, vault: Vault, account: LoyaltyAccount, crede
     _replace_login(db, account, _encrypt_credentials(vault, account, provider, credentials))
 
 
+def remember_login(vault: Vault, account: LoyaltyAccount, login: Mapping[str, str]) -> None:
+    """Keep a login that just worked at the site's own sign-in, in place of the saved one. Unlike
+    saving a new login, the site's memory of this Mac and the program's status stay as they are.
+    The caller commits."""
+    provider = get_provider(account.provider)
+    saved = read_credentials(vault, account) or {}
+    merged = {field.name: login.get(field.name) or saved.get(field.name, "") for field in provider.credential_fields}
+    account.credentials_encrypted = _encrypt_credentials(vault, account, provider, merged)
+
+
 def remove_credentials(db: Session, account: LoyaltyAccount) -> None:
     _replace_login(db, account, None)
 

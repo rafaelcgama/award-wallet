@@ -20,6 +20,13 @@ class LoginRequired(Exception):
     """The request didn't come from the app's own window."""
 
 
+class TokenInAddress(Exception):
+    """The window opened with the launch's secret in its address, which can now come out of it."""
+
+    def __init__(self, address: str) -> None:
+        self.address = address
+
+
 def get_db(request: Request) -> Iterator[Session]:
     with request.app.state.sessionmaker() as db:
         yield db
@@ -38,11 +45,19 @@ def get_current_user(request: Request, db: Annotated[Session, Depends(get_db)]) 
     user = db.get(User, user_id) if user_id else None
     if user is None and _opened_by_desktop_app(request):
         user = users.owner(db)
+        # A fresh session: nothing from before the window opened carries into it.
+        request.session.clear()
         request.session[SESSION_USER_KEY] = user.id
     if user is None:
         # Forget a user that no longer exists (say, after the database was reset).
         request.session.pop(SESSION_USER_KEY, None)
         raise LoginRequired()
+    if "token" in request.query_params and request.method == "GET":
+        # The session cookie keeps the window signed in from here on, so the secret comes out of
+        # the window's address and history.
+        address = request.url.remove_query_params("token")
+        path = "/" + address.path.lstrip("/")  # never "//elsewhere", which would leave the app
+        raise TokenInAddress(path + (f"?{address.query}" if address.query else ""))
     return user
 
 

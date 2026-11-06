@@ -18,7 +18,7 @@ if ! command -v uv >/dev/null; then
 fi
 
 echo "==> Installing dependencies"
-uv sync --extra desktop
+uv sync --locked --extra desktop
 
 if [[ "${SKIP_TESTS:-0}" != "1" ]]; then
   echo "==> Running tests"
