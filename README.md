@@ -197,6 +197,10 @@ uv run alembic revision --autogenerate -m "describe the change"
 
 `tests/test_migrations.py` fails if `models.py` changes without a matching migration.
 
+The tests that sign in to a pretend bank and read balances off pages need a browser. CI installs
+Chromium for them; on your Mac they're skipped unless `AW_BROWSER_PATH` names a Chrome or Chromium
+to use.
+
 ### Branches and releases
 
 - `main` is what the installed app updates from, so every change goes on its own branch with a
