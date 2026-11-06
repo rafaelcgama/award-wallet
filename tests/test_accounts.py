@@ -10,7 +10,7 @@ from conftest import link, post_form
 
 def test_provider_picker_lists_every_program(client):
     page = client.get("/accounts/new").text
-    for name in ("American Airlines", "United Airlines", "Chase", "Capital One"):
+    for name in ("American Airlines", "American Express", "United Airlines", "Chase", "Capital One"):
         assert name in page
 
 
@@ -169,6 +169,23 @@ def test_american_airlines_reads_award_miles_not_loyalty_points():
     american = get_provider("american")
     assert american.supports_fetch and american.unit == "miles"
     assert american.balance_url.startswith("https://www.aa.com/")
+
+
+def test_american_express_can_be_linked(client):
+    page = client.get("/accounts/new").text
+    assert "American Express" in page and "Membership Rewards" in page
+    form = client.get("/accounts/new?provider=amex").text
+    assert "User ID" in form
+    account_id = link(client, "amex", credential_username="amexuser", credential_password="pw")
+    assert "Membership Rewards" in client.get(f"/accounts/{account_id}").text
+
+
+def test_american_express_reads_membership_rewards_points():
+    from award_wallet.providers import get_provider
+
+    amex = get_provider("amex")
+    assert amex.supports_fetch and amex.unit == "points"
+    assert amex.balance_url.startswith("https://global.americanexpress.com/")
 
 
 def _local_noon() -> datetime:

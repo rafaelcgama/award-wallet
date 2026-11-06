@@ -7,6 +7,7 @@ import pytest
 
 from award_wallet import fetching
 from award_wallet.providers.american import American
+from award_wallet.providers.american_express import AmericanExpress
 from award_wallet.providers.chase import Chase
 
 CHROME = os.environ.get("AW_BROWSER_PATH") or next(
@@ -133,3 +134,48 @@ def test_american_reads_award_miles_from_a_list_of_numbers(read):
 
 def test_american_never_takes_an_offer_for_the_balance(read):
     assert read("<header>Hi, Rafael</header>" + AA_OFFER, American()) is None
+
+
+# American Express shows the points next to pending points, points that come in once the bill is
+# paid, points earned this year and card offers in points. Only the points you have are the balance.
+AMEX_OFFER = "<aside><p>Earn 10,000 Membership Rewards<sup>®</sup> points after you spend $1,000</p></aside>"
+AMEX_BUCKETS = (
+    "<div><h4>Pending Points</h4><p>2,345</p></div>"
+    "<div><h4>Points Available on Payment</h4><p>0</p></div>"
+    "<div><h4>Points earned this year</h4><p>40,120</p></div>"
+)
+
+
+def test_amex_reads_the_membership_rewards_tile(read):
+    home = (
+        "<section><h3>Total Balance</h3><p>$1,234.56</p></section>"
+        "<section><h3>Membership Rewards<sup>®</sup> Points</h3><p>97,481</p><a href='#'>View Rewards</a></section>"
+    )
+    assert read(AMEX_OFFER + home, AmericanExpress()) == 97481
+
+
+def test_amex_reads_the_points_you_have_not_pending_points(read):
+    for words in ("Available Points", "Points Balance", "Current Points Balance"):
+        points = f"<div><h4>{words}</h4><p>97,481</p></div>"
+        assert read(AMEX_BUCKETS + points, AmericanExpress()) == 97481
+        assert read(points + AMEX_BUCKETS, AmericanExpress()) == 97481
+
+
+def test_amex_reads_a_number_written_with_its_label(read):
+    assert read("<p>97,481 Membership Rewards<sup>®</sup> points</p>" + AMEX_OFFER, AmericanExpress()) == 97481
+    assert read("<p>Points Balance: 97,481</p>" + AMEX_BUCKETS, AmericanExpress()) == 97481
+
+
+def test_amex_never_takes_pending_points_or_an_offer_for_the_balance(read):
+    assert read(AMEX_OFFER + AMEX_BUCKETS, AmericanExpress()) is None
+    note = "<p>Pending points are added to your Points Balance once your payment posts.<sup>1</sup></p>"
+    assert read(note + AMEX_BUCKETS, AmericanExpress()) is None
+
+
+def test_leaves_out_text_only_screen_readers_get(read):
+    hidden = "position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0)"
+    tile = (
+        f"<section><h3>Membership Rewards® Points<span style='{hidden}'>, more about your points</span></h3>"
+        "<p>97,481</p></section>"
+    )
+    assert read(tile, AmericanExpress()) == 97481

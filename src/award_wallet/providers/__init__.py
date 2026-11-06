@@ -1,6 +1,6 @@
 """Loyalty program integrations. Importing this package registers every provider."""
 
-from . import american, capital_one, chase, united  # noqa: F401  (registers the providers)
+from . import american, american_express, capital_one, chase, united  # noqa: F401  (registers the providers)
 from .base import CredentialField, Expiration, FetchResult, Provider
 from .registry import UnknownProvider, all_providers, get_provider
 

@@ -207,6 +207,11 @@ _READ_BY_LABEL = r"""
   const text = new Map();
   const order = [];
 
+  // Text only screen readers get, squeezed into a 1-pixel box, like ", more about your points".
+  const forScreenReaders = (style) =>
+    style.position === "absolute" && style.overflow === "hidden" &&
+    parseFloat(style.width) <= 1 && parseFloat(style.height) <= 1;
+
   // Children as drawn on screen: a web component's own content, and what fills its slots.
   const childrenOf = (node) => {
     if (node.shadowRoot) return node.shadowRoot.childNodes;
@@ -222,7 +227,7 @@ _READ_BY_LABEL = r"""
     if (node.nodeType !== Node.ELEMENT_NODE || skip.has(node.localName)) return "";
     if (node.localName === "br") return "\n";
     const style = getComputedStyle(node);
-    if (style.display === "none" || style.visibility === "hidden") return "";
+    if (style.display === "none" || style.visibility === "hidden" || forScreenReaders(style)) return "";
     parent.set(node, up);
     order.push(node);
     let joined = "";
