@@ -9,6 +9,7 @@ from award_wallet import fetching
 from award_wallet.providers.american import American
 from award_wallet.providers.american_express import AmericanExpress
 from award_wallet.providers.chase import Chase
+from award_wallet.providers.delta import Delta
 
 CHROME = os.environ.get("AW_BROWSER_PATH") or next(
     iter(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux64/chrome")), None
@@ -179,3 +180,29 @@ def test_leaves_out_text_only_screen_readers_get(read):
         "<p>97,481</p></section>"
     )
     assert read(tile, AmericanExpress()) == 97481
+
+
+# Delta's SkyMiles overview: the miles you can spend, then Medallion Qualifying Dollars, pending and
+# upcoming credit from booked trips, lifetime miles toward Million Miler, and card offers in miles.
+DELTA_OFFER = "<aside><p>Earn 70,000 bonus miles with a Delta SkyMiles<sup>®</sup> card</p></aside>"
+DELTA_STATUS = (
+    "<div><h4>MQDs</h4><p>$3,250</p></div>"
+    "<div><h4>Pending &amp; Upcoming</h4><p>2,140</p><p>Miles</p></div>"
+    "<div><h4>Million Miler<sup>™</sup></h4><p>412,906</p><p>Lifetime Miles</p></div>"
+)
+
+
+def test_delta_reads_the_miles_you_can_spend(read):
+    hero = "<header><p>61,370</p><p>Available Miles</p><a href='#'>Book with Miles</a></header>"
+    assert read(DELTA_OFFER + hero + DELTA_STATUS, Delta()) == 61370
+    hero = "<header><h2>Miles Available</h2><strong>61,370</strong></header>"
+    assert read(DELTA_STATUS + hero, Delta()) == 61370
+
+
+def test_delta_reads_a_number_written_with_its_label(read):
+    assert read("<p>61,370 available miles</p>" + DELTA_STATUS, Delta()) == 61370
+    assert read("<p>SkyMiles® Miles Balance: 61,370</p>" + DELTA_OFFER, Delta()) == 61370
+
+
+def test_delta_never_takes_pending_lifetime_or_offer_miles_for_the_balance(read):
+    assert read(DELTA_OFFER + DELTA_STATUS, Delta()) is None

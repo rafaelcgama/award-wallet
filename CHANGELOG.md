@@ -4,6 +4,15 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-06
+
+### Added
+- Delta SkyMiles. Link it with your SkyMiles number (or username) and password, and the app reads
+  the miles you can spend from your SkyMiles overview, out of sight like the others. It never
+  takes Medallion Qualifying Dollars, pending miles from booked trips, lifetime Million Miler
+  miles or a card offer for the balance: if it can't tell, it shows no number rather than a wrong
+  one.
+
 ## [0.9.0] - 2026-11-06
 
 ### Added

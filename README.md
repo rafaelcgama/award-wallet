@@ -2,8 +2,8 @@
 
 A Mac app that shows all your airline miles and credit card points in one place. It signs in to
 each program for you, reads the balance, and keeps the history, so you don't have to visit every
-site. Programs so far: American AAdvantage, United MileagePlus, Chase Ultimate Rewards, Capital
-One Miles and American Express Membership Rewards.
+site. Programs so far: American AAdvantage, Delta SkyMiles, United MileagePlus, Chase Ultimate
+Rewards, Capital One Miles and American Express Membership Rewards.
 
 It's a personal app: everything stays on your Mac, nothing runs in the background, and nothing
 sits in the menu bar. Closing the window quits it.
@@ -113,8 +113,9 @@ Create a module in `src/award_wallet/providers/`, subclass `Provider`, decorate 
 balance once signed in), then either `balance_labels` (the words shown with the balance, like
 "Ultimate Rewards points": the reader takes the number in the same box) or `balance_patterns`
 (regular expressions that find it in the page's text). Labels are the better choice when a page
-shows more than one balance. The sign-in itself is generic. Never rename a provider's `key`: it's
-stored in the database.
+shows more than one balance. Wrap a label in `alone()` when look-alikes sit nearby, like "Pending
+Miles" next to "Available Miles": then only a box whose whole text is the label counts. The
+sign-in itself is generic. Never rename a provider's `key`: it's stored in the database.
 
 ## Development
 

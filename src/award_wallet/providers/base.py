@@ -20,6 +20,14 @@ USERNAME = CredentialField("username", "Username")
 PASSWORD = CredentialField("password", "Password", secret=True)
 
 
+def alone(words: str) -> str:
+    """A balance label that must be the whole text of its box, give or take the number itself
+    before or after it: "Available Miles", "52,300 available miles" or "Available Miles: 52,300".
+    For pages that show the balance among look-alikes, like "Pending Miles", "Points Available on
+    Payment" or a sentence that mentions miles, none of which may count."""
+    return r"(?<=^[\d,\s]*)(?:" + words + r")(?=\W*(?:\d[\d,]*\s*(?:pts|points|miles)?\W*)?$)"
+
+
 @dataclass(frozen=True)
 class Expiration:
     expires_on: date
