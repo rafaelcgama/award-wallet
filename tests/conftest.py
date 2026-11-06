@@ -1,4 +1,7 @@
+import glob
+import os
 import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +14,21 @@ CSRF_PATTERN = re.compile(r'name="csrf_token" value="([^"]+)"')
 
 
 LAUNCH_TOKEN = "launch-token"
+
+
+def browser_for_tests() -> str | None:
+    """The Chrome or Chromium the sign-in and reading tests drive: AW_BROWSER_PATH, or the one
+    Playwright keeps in /opt/pw-browsers. Without one, those tests are skipped."""
+    return os.environ.get("AW_BROWSER_PATH") or next(
+        iter(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux64/chrome")), None
+    )
+
+
+def pytest_configure(config):
+    # CI installs a browser and sets AW_REQUIRE_BROWSER, so the tests that sign in and read
+    # balances can't be skipped there without anyone noticing.
+    if os.environ.get("AW_REQUIRE_BROWSER") and not ((path := browser_for_tests()) and Path(path).is_file()):
+        raise pytest.UsageError("AW_REQUIRE_BROWSER is set, but no browser was found: set AW_BROWSER_PATH.")
 
 
 @pytest.fixture

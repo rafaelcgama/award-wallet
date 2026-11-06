@@ -23,5 +23,13 @@ jobs:
         run: |
           uv run ruff check .
           uv run ruff format --check .
+      - name: Install Chromium for the browser tests
+        # The tests that sign in to a pretend bank and read balances off pages need a real browser.
+        # Without one they'd be skipped, so AW_REQUIRE_BROWSER makes a missing browser an error.
+        run: |
+          uv run playwright install --with-deps chromium
+          path="$(uv run python -c 'from playwright.sync_api import sync_playwright; p = sync_playwright().start(); print(p.chromium.executable_path); p.stop()')"
+          echo "AW_BROWSER_PATH=$path" >> "$GITHUB_ENV"
+          echo "AW_REQUIRE_BROWSER=1" >> "$GITHUB_ENV"
       - name: Test
         run: uv run pytest
