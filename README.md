@@ -2,8 +2,8 @@
 
 A Mac app that shows all your airline miles and credit card points in one place. It signs in to
 each program for you, reads the balance, and keeps the history, so you don't have to visit every
-site. Programs so far: American AAdvantage, United MileagePlus, Chase Ultimate Rewards and
-Capital One Miles.
+site. Programs so far: American AAdvantage, United MileagePlus, Chase Ultimate Rewards, Capital
+One Miles and American Express Membership Rewards.
 
 It's a personal app: everything stays on your Mac, nothing runs in the background, and nothing
 sits in the menu bar. Closing the window quits it.

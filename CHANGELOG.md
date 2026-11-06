@@ -4,6 +4,18 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-06
+
+### Added
+- American Express Membership Rewards. Link it with your Amex User ID and password, and the app
+  reads your points from your account home, out of sight like the others. It never takes pending
+  points, points that come in once you pay, points earned this year or a card offer for the
+  balance: if it can't tell, it shows no number rather than a wrong one.
+
+### Changed
+- Balances are read the way they look on screen: text that only screen readers get, which sites
+  tuck into invisible 1-pixel boxes, no longer counts.
+
 ## [0.8.0] - 2026-11-06
 
 ### Changed
