@@ -87,9 +87,10 @@ If something goes wrong:
   locked.
 - **History** keeps each change in your balance with its date, one entry a day at most, so you can
   see when points came in or went out.
-- **Enter a balance by hand** on a program's page when you didn't save a login for it. You can
-  add how many points expire and on what date (or just the date, if the whole balance expires
-  then), and the program's card shows the next expiration.
+- **Enter a balance by hand** on a program's page when you didn't save a login for it, or to add
+  when points expire, which the sites don't show. You can add how many points expire and on what
+  date (or just the date, if the whole balance expires then), and the program's card shows the
+  next expiration. Refreshes keep it until the date passes.
 - **The small paper plane** next to a balance opens the program's own site in your browser, to
   use your points or miles.
 - **Change saved login** is on the program's page. A new password keeps the site's memory of this
