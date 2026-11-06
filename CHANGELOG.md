@@ -4,6 +4,14 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-11-06
+
+### Fixed
+- An expiration you enter by hand on a program that refreshes by itself stays through the
+  refreshes, until its date passes. Before, the next refresh dropped it, because the sites don't
+  show when points expire. If the balance falls below the amount expiring, the amount shown falls
+  with it; entering the balance by hand without a date clears it.
+
 ## [0.10.2] - 2026-11-06
 
 ### Fixed

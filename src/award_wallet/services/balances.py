@@ -31,8 +31,10 @@ def record_balance(
             raise InvalidInput("The expiring amount must be more than zero and at most the balance.")
 
     when = captured_at or utcnow()
-    lots = sorted((lot.expires_on, lot.amount or 0) for lot in expirations)
     newest = latest_snapshots(db, [account.id]).get(account.id)
+    if source == BalanceSource.SYNC and not expirations and newest is not None:
+        expirations = _kept_expirations(newest, balance, local_day(when))
+    lots = sorted((lot.expires_on, lot.amount or 0) for lot in expirations)
     if newest is not None and newest.balance == balance and _lots(newest) == lots:
         db.commit()
         return newest
@@ -47,6 +49,18 @@ def record_balance(
     entry.expirations = [ExpirationLot(expires_on=lot.expires_on, amount=lot.amount) for lot in expirations]
     db.commit()
     return entry
+
+
+def _kept_expirations(snapshot: BalanceSnapshot, balance: int, today: date) -> list[Expiration]:
+    """What a refresh keeps of the expirations you entered by hand. Sites don't say when points
+    expire, so each date stays while it's still ahead, for at most the new balance."""
+    if balance == 0:
+        return []
+    return [
+        Expiration(expires_on=lot.expires_on, amount=None if lot.amount is None else min(lot.amount, balance))
+        for lot in snapshot.expirations
+        if lot.expires_on >= today
+    ]
 
 
 def local_day(moment: datetime) -> date:

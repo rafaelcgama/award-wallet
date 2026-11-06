@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import func, select
 
 from award_wallet.models import BalanceSnapshot, BalanceSource, ExpirationLot, LoyaltyAccount
+from award_wallet.providers import Expiration
 from award_wallet.services import accounts, balances
 
 from conftest import link, post_form
@@ -256,3 +257,36 @@ def test_history_from_older_versions_shows_each_change_once(client, db):
         (50000, (noon - timedelta(days=2)).date()),
     ]
     assert balances.latest_snapshots(db, [account.id])[account.id].captured_at == noon + timedelta(minutes=22)
+
+
+def test_refreshes_keep_the_expirations_you_entered(client, db):
+    # Sites don't show when points expire, so the dates typed in by hand have to outlast refreshes.
+    account = db.get(LoyaltyAccount, link(client, "chase"))
+    noon = _local_noon()
+    past, soon, later = (noon.date() + timedelta(days=days) for days in (-5, 30, 90))
+    balances.record_balance(
+        db,
+        account,
+        balance=80000,
+        source=BalanceSource.MANUAL,
+        expirations=[Expiration(past, 1000), Expiration(soon, 5000), Expiration(later)],
+        captured_at=noon - timedelta(days=10),
+    )
+
+    def refresh(balance, when):
+        balances.record_balance(db, account, balance=balance, source=BalanceSource.SYNC, captured_at=when)
+        newest = balances.latest_snapshots(db, [account.id])[account.id]
+        return [(lot.expires_on, lot.amount) for lot in newest.expirations]
+
+    assert refresh(80000, noon - timedelta(days=9)) == [(past, 1000), (soon, 5000), (later, None)]
+    # A date that went by is dropped, and no more can expire than the balance.
+    assert refresh(3000, noon) == [(soon, 3000), (later, None)]
+    assert "3,000 points expire" in client.get("/").text
+    assert refresh(0, noon) == []
+
+    # Entering the balance by hand without a date is how you clear one.
+    balances.record_balance(
+        db, account, balance=500, source=BalanceSource.MANUAL, expirations=[Expiration(soon)], captured_at=noon
+    )
+    balances.record_balance(db, account, balance=500, source=BalanceSource.MANUAL, captured_at=noon)
+    assert refresh(700, noon) == []
