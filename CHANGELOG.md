@@ -4,6 +4,13 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-11-06
+
+### Changed
+- **Sign in** starts right away while other programs refresh, instead of waiting for a free
+  turn behind them. If the program itself was still waiting for its refresh, the sign-in takes
+  that refresh's place; before, it said the program was refreshing and to try again later.
+
 ## [0.11.1] - 2026-11-06
 
 ### Fixed

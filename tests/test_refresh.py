@@ -778,3 +778,50 @@ def test_waiting_for_refreshes_gives_up_at_its_time_limit(settings):
             app.state.refresher.wait(0.2)
         let_go.set()
         app.state.refresher.wait(10)
+
+
+def _three_slow_refreshes(window, sites, let_go):
+    """Links three programs whose refreshes hold every refresh slot until let_go is set."""
+    for provider in ("united", "chase", "capital_one"):
+        sites.answers[provider] = lambda view: let_go.wait(10) and 1000
+        link_with_login(window, provider)
+    assert until(lambda: len(sites.calls) >= 3)
+
+
+def test_a_sign_in_starts_without_waiting_for_refreshes(settings):
+    sites = FakeSites()
+    let_go = threading.Event()
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        sites.answers["delta"] = fetching.NeedsPerson("Delta wants to confirm it's you. Click Sign in.")
+        path = link_with_login(window, "delta").url.path
+        app.state.refresher.wait(10)
+        _three_slow_refreshes(window, sites, let_go)
+        sites.answers["american"] = 1000
+        link_with_login(window, "american")  # waits its turn behind the three
+
+        sites.answers["delta"] = 5000
+        post_form(window, path + "/sign-in", {}, token_from=path)
+        assert until(lambda: ("delta", True) in sites.calls)
+        assert ("american", False) not in sites.calls
+        let_go.set()
+        app.state.refresher.wait(10)
+        assert sites.calls[-1] == ("american", False)
+
+
+def test_a_sign_in_takes_the_place_of_a_refresh_waiting_its_turn(settings):
+    sites = FakeSites()
+    let_go = threading.Event()
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        _three_slow_refreshes(window, sites, let_go)
+        sites.answers["delta"] = 5000
+        path = link_with_login(window, "delta").url.path  # its refresh waits its turn
+        page = post_form(window, path + "/sign-in", {}, token_from=path)
+        assert "refreshing right now" not in page.text
+        assert until(lambda: ("delta", True) in sites.calls)
+        let_go.set()
+        app.state.refresher.wait(10)
+        assert [call for call in sites.calls if call[0] == "delta"] == [("delta", True)]
