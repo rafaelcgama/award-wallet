@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from award_wallet.providers import all_providers
+from award_wallet.services import accounts
 from award_wallet.services.dashboard import summarize_accounts
 from award_wallet.services.refresh import can_fetch
 
@@ -18,6 +19,7 @@ def dashboard(request: Request, db: DbSession, user: CurrentUser):
     if state.settings.auto_fetch and not state.refreshed_on_open:
         # Fresh balances every time the app opens.
         state.refreshed_on_open = True
+        state.refresher.forget_other_browsers(accounts.all_account_ids(db))
         state.refresher.refresh_all(db, user.id)
         check_in_background(request.app)
     summaries = summarize_accounts(db, user.id)

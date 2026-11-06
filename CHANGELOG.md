@@ -4,6 +4,17 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-06
+
+### Fixed
+- Removing a program, or changing or removing its login, while it refreshes no longer gets in the
+  refresh's way. The program's Chrome profile is deleted once that refresh ends; before, Chrome
+  could write it again, leaving the site's cookies behind. A sign-in to it that's open stops.
+- A refresh that was running when you saved a new login no longer puts the old login back, or
+  saves what the old login read. The new login is fetched right after.
+- A Chrome profile left behind by a program you removed, like when the app quit before the
+  removal finished, is deleted the next time the app opens.
+
 ## [0.11.0] - 2026-11-06
 
 ### Added
