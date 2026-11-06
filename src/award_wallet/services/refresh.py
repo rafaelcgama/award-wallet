@@ -1,5 +1,6 @@
 """Fetches balances in the background, a few programs at a time, so pages never wait on a bank site."""
 
+import itertools
 import logging
 import queue
 import re
@@ -53,8 +54,12 @@ class Refresher:
         # One Chrome profile per program, kept between runs so the site remembers this Mac.
         self._browser_dir = browser_dir or Path(tempfile.gettempdir()) / "award-wallet-browser"
         self._screenshots_dir = screenshots_dir
-        self._jobs: queue.Queue[_Job] = queue.Queue()
+        # Sign-ins first, then refreshes, each in the order asked.
+        self._jobs: queue.PriorityQueue[tuple[int, int, _Job]] = queue.PriorityQueue()
+        self._order = itertools.count()
+        # Accounts with a fetch queued or running, and of those queued, the number of the job to run.
         self._waiting: set[str] = set()
+        self._queued: dict[str, int] = {}
         # Sign-ins shown in the app's window, by account, from the click until they end.
         self._views: dict[str, SignInView] = {}
         # Chrome profiles to delete once the fetch using them ends.
@@ -98,7 +103,8 @@ class Refresher:
 
     def sign_in(self, account: LoyaltyAccount) -> SignInView | None:
         """Sign in to this program with you: the hidden Chrome that refreshes it signs in, and its
-        page shows in the app's window, where you finish what the site asks. None if the program
+        page shows in the app's window, where you finish what the site asks. It starts right away,
+        taking the place of a refresh of the program still waiting its turn. None if the program
         is being refreshed right now."""
         if not can_fetch(account):
             return None
@@ -152,42 +158,78 @@ class Refresher:
 
     def _enqueue(self, job: _Job, view: SignInView | None = None) -> bool:
         with self._lock:
-            if job.account_id in self._waiting:
+            # A sign-in takes the place of a refresh that hasn't started; anything else waits.
+            if job.account_id in self._waiting and not (job.with_person and job.account_id in self._queued):
                 return False
             self._waiting.add(job.account_id)
+            number = self._queued[job.account_id] = next(self._order)
             if view:
                 self._views[job.account_id] = view
+            self._jobs.put((0 if job.with_person else 1, number, job))
             self._workers = [worker for worker in self._workers if worker.is_alive()]
             if len(self._workers) < MAX_PARALLEL:
                 worker = threading.Thread(target=self._work, name="award-wallet-refresh", daemon=True)
                 worker.start()
                 self._workers.append(worker)
-        self._jobs.put(job)
+            elif job.with_person:
+                # You're waiting for this one, so it gets a Chrome of its own instead of waiting
+                # for a refresh to end.
+                threading.Thread(target=self._work_once, name="award-wallet-sign-in", daemon=True).start()
         return True
 
     def _work(self) -> None:
         while True:
-            job = self._jobs.get()
-            started = time.monotonic()
-            done = False
+            self._take(self._jobs.get())
+
+    def _work_once(self) -> None:
+        """Runs a sign-in beside the refreshes, then ends."""
+        while True:
             try:
-                done = self._run(job)
-            except Exception:
-                log.exception("Refreshing %s failed", job.account_id)
-            else:
-                log.info("Refresh of %s took %.1fs", job.account_id, time.monotonic() - started)
-            finally:
-                with self._lock:
-                    self._waiting.discard(job.account_id)
-                    view = self._views.pop(job.account_id, None)
-                    self._forget_if_asked(job.account_id)
-                    again = job.account_id in self._again
-                    self._again.discard(job.account_id)
-                if view:
-                    view.end(done)
-                if again:
-                    self._enqueue(_Job(job.account_id, with_person=False))
+                item = self._jobs.get_nowait()
+            except queue.Empty:
+                return
+            if not item[2].with_person:
+                # The sign-in was already taken; the refreshes keep their own pace.
+                self._jobs.put(item)
                 self._jobs.task_done()
+                return
+            if self._take(item):
+                return
+
+    def _take(self, item: tuple[int, int, _Job]) -> bool:
+        """Runs a job from the queue. False if a sign-in took its place, so it doesn't run."""
+        _, number, job = item
+        with self._lock:
+            current = self._queued.get(job.account_id) == number
+            if current:
+                del self._queued[job.account_id]
+        if not current:
+            self._jobs.task_done()
+            return False
+        self._do(job)
+        return True
+
+    def _do(self, job: _Job) -> None:
+        started = time.monotonic()
+        done = False
+        try:
+            done = self._run(job)
+        except Exception:
+            log.exception("Refreshing %s failed", job.account_id)
+        else:
+            log.info("Refresh of %s took %.1fs", job.account_id, time.monotonic() - started)
+        finally:
+            with self._lock:
+                self._waiting.discard(job.account_id)
+                view = self._views.pop(job.account_id, None)
+                self._forget_if_asked(job.account_id)
+                again = job.account_id in self._again
+                self._again.discard(job.account_id)
+            if view:
+                view.end(done)
+            if again:
+                self._enqueue(_Job(job.account_id, with_person=False))
+            self._jobs.task_done()
 
     def _forget_if_asked(self, account_id: str) -> None:
         """With the lock held, so no fetch starts on the profile meanwhile."""
