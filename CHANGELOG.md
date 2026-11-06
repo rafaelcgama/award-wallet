@@ -4,6 +4,18 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-11-06
+
+### Fixed
+- When a site changes its balance page, a refresh says it couldn't find your points or miles
+  there. Before, if the page took more than 15 seconds to open, the program said it needed you to
+  finish signing in, and **Sign in** then waited five minutes for nothing.
+- While you sign in, the note above the page says so too when Award Wallet can't find the balance
+  on it, so you know to click **Stop**.
+- With no programs linked yet, the dashboard names every program you can link, American Express
+  and Delta included.
+- The hidden `--check-browser` command, which checks that Chrome starts, works again.
+
 ## [0.10.1] - 2026-11-06
 
 ### Changed

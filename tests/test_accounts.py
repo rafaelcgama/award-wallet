@@ -14,6 +14,15 @@ def test_provider_picker_lists_every_program(client):
         assert name in page
 
 
+def test_the_empty_dashboard_names_every_program(client):
+    page = client.get("/").text
+    assert "Nothing here yet" in page
+    assert (
+        "Link American Airlines, American Express, Capital One, Chase, Delta Air Lines or United Airlines "
+        "to see your balances side by side."
+    ) in page
+
+
 def test_unknown_provider_is_a_404(client):
     assert client.get("/accounts/new?provider=nope").status_code == 404
 

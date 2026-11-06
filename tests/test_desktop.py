@@ -142,3 +142,32 @@ def test_log_file_is_kept_in_the_diagnostics_folder(tmp_path):
             if getattr(handler, "baseFilename", "").startswith(str(folder)):
                 root.removeHandler(handler)
                 handler.close()
+
+
+def test_check_browser_starts_chrome_and_says_so(monkeypatch, capsys):
+    from award_wallet import desktop, fetching
+
+    started = []
+
+    class Page:
+        def evaluate(self, script):
+            return "Mozilla/5.0 Chrome/150.0"
+
+    class Context:
+        pages = [Page()]
+
+        def close(self):
+            started.append("closed")
+
+    class Playwright:
+        def stop(self):
+            started.append("stopped")
+
+    def launcher(profile):
+        started.append(profile.is_dir())
+        return Playwright(), Context()
+
+    monkeypatch.setattr(fetching, "browser_launcher", launcher)
+    desktop.main(["--check-browser"])
+    assert "Chrome is ready: Mozilla/5.0 Chrome/150.0" in capsys.readouterr().out
+    assert started == [True, "closed", "stopped"]

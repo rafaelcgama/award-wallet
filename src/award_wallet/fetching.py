@@ -894,6 +894,20 @@ def _finish_note(provider: Provider, with_you: bool) -> str:
     return f"{provider.name} needs you to finish signing in. Click Sign in."
 
 
+def _not_found_note(provider: Provider) -> str:
+    return (
+        f"Couldn't find your {provider.unit} on {provider.name}'s page. "
+        "The site may have changed; a screenshot was saved for checking."
+    )
+
+
+def _lost_note(provider: Provider) -> str:
+    return (
+        f"Award Wallet can't find your {provider.unit} on this page. {provider.name} may have changed it: "
+        "click Stop, and a screenshot is saved for checking."
+    )
+
+
 def _rejected_note(provider: Provider) -> str:
     return f"{provider.name} didn't take the saved login. Sign in below, and Award Wallet keeps the login that works."
 
@@ -1036,6 +1050,11 @@ def _sign_in_and_read(page, run: _Run) -> int:
                 f"The sign-in to {provider.name} timed out before it finished. Click Sign in to try again."
             )
         if not run.with_you and now >= started + QUIET_TIMEOUT:
+            if looking_since is not None:
+                # Signed in and on the balance page, but the number isn't where the app looks for
+                # it: the site changed the page, which no sign-in fixes.
+                log.info("%s: no balance on the balance page", provider.key)
+                raise FetchProblem(_not_found_note(provider))
             run.needs_you("", _finish_note(provider, with_you=False))
         url = page.url
         if (where := _where(url)) != last_where:
@@ -1117,11 +1136,12 @@ def _sign_in_and_read(page, run: _Run) -> int:
                 if looked > TROUBLE_GRACE and (trouble := _site_trouble(page)):
                     log.info("%s: the site shows an error", provider.key)
                     raise FetchProblem(f"{provider.name} says: “{trouble}” Try again later.")
-                if looked > READ_TIMEOUT and not run.with_you:
-                    raise FetchProblem(
-                        f"Couldn't find your {provider.unit} on {provider.name}'s page. "
-                        "The site may have changed; a screenshot was saved for checking."
-                    )
+                if looked > READ_TIMEOUT:
+                    if not run.with_you:
+                        raise FetchProblem(_not_found_note(provider))
+                    # You might still be signing in on this very page, so only your own time limit
+                    # ends the sign-in; the note says why nothing is happening.
+                    run.needs_you(_lost_note(provider), "")
                 if looked > SCROLL_EVERY and time.monotonic() - scrolled_at > SCROLL_EVERY:
                     scrolled_at = time.monotonic()
                     _scroll_on(page)

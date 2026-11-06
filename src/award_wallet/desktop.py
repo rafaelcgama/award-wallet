@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> None:
         from award_wallet.fetching import browser_launcher
 
         with tempfile.TemporaryDirectory() as profile:
-            playwright, context = browser_launcher(Path(profile), headless=True)
+            playwright, context = browser_launcher(Path(profile))
             page = context.pages[0] if context.pages else context.new_page()
             print(f"Chrome is ready: {page.evaluate('navigator.userAgent')}", flush=True)
             context.close()
