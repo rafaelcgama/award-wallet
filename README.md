@@ -10,6 +10,11 @@ sits in the menu bar. Closing the window quits it.
 
 ## Install
 
+You need a Mac with an Apple chip (M1 or newer) and **Google Chrome**, which the app uses to sign
+in to the programs' websites. Download the app, or build it yourself.
+
+### Download it
+
 1. Download the newest `Award-Wallet-vX.Y.Z.dmg` from the repository's **Releases** page.
 2. Open it and drag **Award Wallet** onto **Applications**. (Opened straight from the .dmg, it
    offers to move itself there.)
@@ -18,17 +23,58 @@ sits in the menu bar. Closing the window quits it.
    `xattr -dr com.apple.quarantine "/Applications/Award Wallet.app"` in Terminal, or go to
    **System Settings → Privacy & Security** and click **Open Anyway**.
 
-Release builds are for Apple Silicon Macs (M1 and newer). You also need **Google Chrome**, which
-the app uses to sign in to the programs' websites.
+### Build it yourself
+
+No programming needed: you paste two lines into Terminal and wait a few minutes. A copy you build
+on your own Mac opens without the "could not verify" warning.
+
+1. **Get the code.** On this repository's GitHub page, click the green **Code** button, then
+   **Download ZIP**. In your **Downloads** folder, double-click `award-wallet-main.zip` if your
+   browser didn't unzip it already. You now have a folder named `award-wallet-main`.
+2. **Open Terminal.** Press ⌘ Space, type `Terminal` and press Return.
+3. **Install uv**, a free tool that downloads what the build needs, like Python. Paste this line
+   into Terminal and press Return:
+
+   ```sh
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+4. **Build the app.** Paste this line and press Return:
+
+   ```sh
+   cd ~/Downloads/award-wallet-main && bash build_dmg.sh
+   ```
+
+   If macOS asks whether Terminal may access files in your Downloads folder, click **Allow**.
+   The build downloads what it needs, runs the app's tests and packs the app. When it says
+   `Done: build/Award Wallet.dmg`, a Finder window opens on the `build` folder.
+5. **Install it.** Double-click **Award Wallet.dmg**, drag **Award Wallet** onto
+   **Applications**, then eject the disk image (the ⏏ next to it in Finder's sidebar). The
+   `award-wallet-main` folder and the .zip can go to the Trash.
+
+**Update now** works in a copy you built, too: it installs the newest release.
+
+If something goes wrong:
+
+- **"uv is missing"**: step 3 didn't finish. Do it again, then quit Terminal (⌘ Q), open it again
+  and repeat step 4.
+- **"no such file or directory"**: the folder has another name or isn't in Downloads. Type `cd `
+  (with a space after it), drag the folder from Finder onto the Terminal window and press Return.
+  Then paste `bash build_dmg.sh` and press Return.
+- **It stops at "Running tests"**: something in this copy of the code doesn't work on your Mac.
+  Copy what Terminal shows into a new issue on the repository's **Issues** page.
+- **On an Intel Mac** it stops while installing `cryptography`: that library is only published
+  ready to use for Apple chips, so the build needs a Mac with an Apple chip.
 
 ## Using it
 
-- **Link a program** with its username and password. The app signs in and fetches the balance
-  out of sight. Each program has its own Chrome profile, kept by the app, so the site remembers
-  this Mac the way it remembers your own Chrome and stops asking.
-- **Balances refresh by themselves** every time you open the app, all programs at once. The
-  **Refresh now** button does it on demand. Chrome works invisibly, with no window, tab or Dock
-  icon, and types the saved login one key at a time, like a person.
+- **Link a program** with its username and password, and a name for it if you like. The app
+  signs in and fetches the balance out of sight. Each program has its own Chrome profile, kept by
+  the app, so the site remembers this Mac the way it remembers your own Chrome and stops asking.
+- **Balances refresh by themselves** every time you open the app, three programs at a time.
+  **Refresh now** does it on demand, and **Refresh** on a program's page does just that one.
+  Chrome works invisibly, with no window, tab or Dock icon, and types the saved login one key at
+  a time, like a person.
 - **Needs your sign-in** means a site wants something only you can give, like a code by text,
   usually only the first time. Click **Sign in** on the program: the site's page shows right in
   Award Wallet, with a note saying what the site wants. The app types your saved login; you click
@@ -41,6 +87,18 @@ the app uses to sign in to the programs' websites.
   locked.
 - **History** keeps each change in your balance with its date, one entry a day at most, so you can
   see when points came in or went out.
+- **Enter a balance by hand** on a program's page when you didn't save a login for it. You can
+  add how many points expire and on what date (or just the date, if the whole balance expires
+  then), and the program's card shows the next expiration.
+- **The small paper plane** next to a balance opens the program's own site in your browser, to
+  use your points or miles.
+- **Change saved login** is on the program's page. A new password keeps the site's memory of this
+  Mac; a different username starts fresh, so the site may ask to confirm it's you again.
+- **Remove saved login** goes back to entering the balance by hand, and **Remove program** also
+  deletes its history. Both delete the program's Chrome profile; your account with the program
+  isn't affected.
+
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Updating
 
@@ -119,7 +177,8 @@ sign-in itself is generic. Never rename a provider's `key`: it's stored in the d
 
 ## Development
 
-You need [uv](https://docs.astral.sh/uv/) (`brew install uv`). Run `make` to list the shortcuts:
+You need [uv](https://docs.astral.sh/uv/): `curl -LsSf https://astral.sh/uv/install.sh | sh`, or
+`brew install uv` if you use Homebrew. Run `make` to list the shortcuts:
 
 | Command | What it does |
 | --- | --- |
