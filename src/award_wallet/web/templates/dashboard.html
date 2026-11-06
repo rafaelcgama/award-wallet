@@ -60,7 +60,7 @@
     </div>
     {% if s.latest %}
     <div class="balance">{{ s.latest.balance|number }} <span class="unit">{{ s.latest.unit }}</span> {{ rewards_link(s.provider) }}</div>
-    <div class="meta">Updated {{ s.latest.captured_at|time_ago }}</div>
+    <div class="meta">Updated {{ s.checked_at|time_ago }}</div>
     {% else %}
     <div class="balance balance-empty">No balance yet</div>
     {% endif %}
@@ -68,6 +68,13 @@
     <div class="meta meta-warn">{{ needs_you[s.account.id] }}</div>
     {% elif s.account.id not in busy and s.account.sync_message %}
     <div class="meta meta-warn">{{ s.account.sync_message }}</div>
+    {% if s.account.sync_status in ("needs_login", "login_rejected") and auto_fetch and s.provider.supports_fetch and s.account.credentials_encrypted %}
+    <form method="post" action="/accounts/{{ s.account.id }}/sign-in" class="card-action">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="back" value="dashboard">
+      <button type="submit" class="button button-small" data-busy="Opening…">Sign in</button>
+    </form>
+    {% endif %}
     {% elif not s.latest %}
     <div class="meta">Open it to {{ "sign in" if auto_fetch and s.provider.supports_fetch and s.account.credentials_encrypted else "enter a balance" }}</div>
     {% endif %}

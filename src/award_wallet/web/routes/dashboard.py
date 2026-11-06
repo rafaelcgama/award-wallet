@@ -43,5 +43,5 @@ def refresh_now(request: Request, db: DbSession, user: CurrentUser):
         rejected = [s.account for s in summarize_accounts(db, user.id) if s.account.sync_status == "login_rejected"]
         if rejected:
             names = ", ".join(account.label for account in rejected)
-            flash(request, f"Skipped {names}: the site didn't accept the saved login. Open it to save it again.")
+            flash(request, f"Skipped {names}: the site didn't take the saved login. Click Sign in to sign in once.")
     return RedirectResponse("/", status_code=303)

@@ -23,19 +23,21 @@ the app uses to sign in to the programs' websites.
 
 ## Using it
 
-- **Link a program** with its username and password. A Chrome window opens and signs in; if the
-  site asks to confirm it's you (a code by text, say), do it there, once. Each program has its own
-  Chrome profile, kept by the app, so the site remembers this Mac the way it remembers your own
-  Chrome and stops asking.
+- **Link a program** with its username and password. The app signs in and fetches the balance
+  out of sight. Each program has its own Chrome profile, kept by the app, so the site remembers
+  this Mac the way it remembers your own Chrome and stops asking.
 - **Balances refresh by themselves** every time you open the app, all programs at once. The
-  **Refresh now** button does it on demand. Chrome signs in out of sight meanwhile, typing the
-  saved login itself. Its window only comes up if a site wants something only you can give, and
-  the program then shows **Waiting for you** with a note saying what the site wants.
-- **Needs your sign-in** means a site asked for a code and nobody typed it. The next refresh asks
-  again, or open the program and click **Sign in**.
-- **Check your login** means the site said the saved username or password is wrong: save it
-  again. The app never retries a rejected login by itself, so your account doesn't get locked.
-- **History** keeps every balance with its date, so you can see when points came in or went out.
+  **Refresh now** button does it on demand. Chrome works invisibly, with no window, tab or Dock
+  icon, and types the saved login one key at a time, like a person.
+- **Needs your sign-in** means a site wants something only you can give, like a code by text,
+  usually only the first time. Click **Sign in** on the program: a Chrome window opens for just
+  that, the program shows **Waiting for you** with a note saying what the site wants, and from
+  then on refreshes run out of sight again. Nothing opens unless you click.
+- **Check your login** means the site turned down the saved username or password. Click
+  **Sign in** and sign in yourself in the window, and the app keeps the login that works; or save
+  it again. The app never retries a rejected login by itself, so your account doesn't get locked.
+- **History** keeps each change in your balance with its date, one entry a day at most, so you can
+  see when points came in or went out.
 
 ## Updating
 
@@ -58,17 +60,23 @@ Everything lives in `~/Library/Application Support/Award Wallet`:
 | `settings.env` | Your encryption keys. Back it up: without it, saved logins can't be decrypted. |
 | `award_wallet.db` | Your programs and balance history. |
 | `Browser/` | Each program's Chrome profile: the site's cookies, which keep it signed in and remember this Mac. Deleting one makes that site ask for a security code again. |
-| `Diagnostics/` | A log of what the app did and screenshots of pages where a fetch failed. Safe to send when something needs fixing (cover account numbers in the screenshots). **Help → Show Diagnostics in Finder** opens it. |
+| `Diagnostics/` | A log of what the app did and screenshots of pages where a fetch failed. Safe to send when something needs fixing: the screenshots black out every box, so nothing typed shows (cover account numbers the page itself shows). **Help → Show Diagnostics in Finder** opens it. |
 
 To uninstall, drag the app to the Trash; to remove your data too, delete that folder.
 
-**Security.** Program logins are encrypted with AES-256-GCM before they're saved, and each one is
-tied to its account. They're only ever sent to the program's own website. The sites' cookies stay
-in each program's Chrome profile, which Chrome encrypts with your Mac's Keychain, the same way it
-protects your own Chrome's cookies. The app's pages are
-served only to its own window on your Mac: each launch makes a new secret that signs the window
-in, it only answers on 127.0.0.1, and every form carries a token so other websites can't submit
-forms as you.
+**Security.**
+- Program logins are encrypted with AES-256-GCM before they're saved, and each one is tied to its
+  account. They're only ever sent to the program's own website.
+- The sites' cookies stay in each program's Chrome profile, which Chrome encrypts with your Mac's
+  Keychain, the same way it protects your own Chrome's cookies.
+- Only you can open the app's folder or read what the app writes.
+- The app's pages are served only to its own window on your Mac. Each launch makes a new secret
+  that signs the window in for that launch only, the app only answers on 127.0.0.1, every form
+  carries a token, and requests from other websites are turned away.
+- The pages run only the app's own scripts, can't be shown inside another site and aren't kept on
+  disk.
+- Updates come only from this repository's releases on GitHub, over HTTPS, and must match the
+  SHA-256 GitHub lists for them, or nothing is installed.
 
 ## How it's built
 
@@ -83,7 +91,7 @@ src/award_wallet/
   providers/     one module per program: where its balance page is and how to read it
   services/      accounts, balances, background refresh
   updates.py     Check for Updates, one-click install, Move to Applications
-  web/           pages, templates and CSS
+  web/           pages, templates, CSS and scripts; security.py locks the pages to the window
   models.py      tables: loyalty accounts, balance snapshots, expiration lots
   migrations/    database schema versions
   security/      the encryption vault

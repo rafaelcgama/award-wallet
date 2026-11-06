@@ -94,6 +94,9 @@ class Refresher:
         self._jobs.join()
 
     def browser_profile(self, account_id: str) -> Path:
+        # An account's id names a folder inside the Browser folder, never one outside it.
+        if account_id in ("", ".", "..") or Path(account_id).name != account_id:
+            raise ValueError(f"Not an account id: {account_id!r}")
         return self._browser_dir / account_id
 
     def forget_browser(self, account_id: str) -> None:
@@ -141,15 +144,21 @@ class Refresher:
             # Chrome profile once, so the site still knows this Mac.
             old_state = accounts.read_session_state(self._vault, account) or {}
 
+            # A login you signed in with at the window, after the site turned the saved one down.
+            learned: dict[str, str] = {}
             try:
                 balance = self._fetch(
                     provider,
                     credentials,
                     self.browser_profile(account.id),
                     with_person=job.with_person,
+                    # The site turned the saved login down last time, so at the window you sign in
+                    # yourself instead of the app trying it again.
+                    type_login=not (job.with_person and account.sync_status == SyncStatus.LOGIN_REJECTED),
                     screenshot_to=screenshot,
                     seed_cookies=old_state.get("cookies"),
                     on_needs_you=lambda note: self._note(job.account_id, note),
+                    on_new_login=learned.update,
                 )
             except Exception as exc:
                 status, message = self._outcome(provider, exc)
@@ -158,6 +167,9 @@ class Refresher:
                 self._finish(db, account, status, message)
                 return
 
+            if learned:
+                accounts.remember_login(self._vault, account, learned)
+                log.info("%s: kept the login you signed in with", provider.key)
             account.session_state_encrypted = None
             account.last_synced_at = utcnow()
             self._finish(db, account, SyncStatus.OK, None, commit=False)

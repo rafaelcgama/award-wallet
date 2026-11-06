@@ -19,6 +19,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The build runs code from the app's libraries: it gets no way to push to the repository.
+          # Only the steps that read or publish the release get the token.
+          persist-credentials: false
       - name: Is this version new?
         id: version
         env:

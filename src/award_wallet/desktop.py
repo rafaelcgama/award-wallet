@@ -4,8 +4,10 @@ Data and keys live in ~/Library/Application Support/Award Wallet, the usual plac
 """
 
 import argparse
+import html
 import logging
 import logging.handlers
+import os
 import secrets
 import socket
 import subprocess
@@ -38,6 +40,9 @@ def data_dir() -> Path:
 
 def desktop_settings(directory: Path, token: str) -> Settings:
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Only you can open the folder with your logins, balances and keys, even if an older version
+    # left it open to others on this Mac.
+    directory.chmod(0o700)
     keys_file = directory / KEYS_FILE
     if not keys_file.exists():
         create_keys_file(keys_file)
@@ -124,7 +129,7 @@ def _show_startup_error() -> None:
         html=(
             "<body style='font:15px -apple-system,sans-serif;padding:32px;line-height:1.5'>"
             "<h2>Award Wallet couldn't start</h2>"
-            f"<p>The details are in the log file in <code>{folder}</code>. "
+            f"<p>The details are in the log file in <code>{html.escape(str(folder))}</code>. "
             "Send it over and it'll get fixed. Your data is safe.</p></body>"
         ),
         width=560,
@@ -154,6 +159,9 @@ def main(argv: list[str] | None = None) -> None:
             playwright.stop()
         return
 
+    # Everything the app writes (its database, logs, screenshots and each program's Chrome
+    # profile) is readable by you alone.
+    os.umask(0o077)
     start_logging(data_dir())
     logging.getLogger(__name__).info("Award Wallet %s starting", __version__)
     token = secrets.token_urlsafe(32)
@@ -173,6 +181,8 @@ def main(argv: list[str] | None = None) -> None:
         else:
             import webview
 
+            # The window shows the app's own pages, never files from this Mac.
+            webview.settings["ALLOW_FILE_URLS"] = False
             window = webview.create_window(APP_NAME, start_url, width=1120, height=820, min_size=(420, 560))
             server.config.app.state.quit_app = window.destroy
             # Closing the window quits the app: nothing keeps running and there's no menu bar icon.

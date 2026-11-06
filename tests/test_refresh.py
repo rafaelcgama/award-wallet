@@ -1,10 +1,12 @@
 import threading
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from award_wallet import fetching
-from award_wallet.models import LoyaltyAccount, SyncStatus
+from award_wallet.models import BalanceSnapshot, LoyaltyAccount, SyncStatus
+from award_wallet.services import accounts
 from award_wallet.web import create_app
 
 from conftest import post_form
@@ -18,16 +20,30 @@ class FakeSites:
         self.calls: list[tuple[str, bool]] = []
         self.profiles: list = []
         self.seeds: list = []
+        self.typed: list[bool] = []
+        self.logins: list[dict] = []
 
     def __call__(
-        self, provider, credentials, profile, *, with_person, screenshot_to=None, seed_cookies=None, on_needs_you=None
+        self,
+        provider,
+        credentials,
+        profile,
+        *,
+        with_person,
+        type_login=True,
+        screenshot_to=None,
+        seed_cookies=None,
+        on_needs_you=None,
+        on_new_login=None,
     ):
         self.calls.append((provider.key, with_person))
         self.profiles.append(profile)
         self.seeds.append(seed_cookies)
+        self.typed.append(type_login)
+        self.logins.append(credentials)
         answer = self.answers.get(provider.key, 1000)
         if callable(answer):
-            answer = answer(on_needs_you)
+            answer = answer(on_needs_you) if answer.__code__.co_argcount == 1 else answer(on_needs_you, on_new_login)
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -51,18 +67,37 @@ def link_with_login(window, provider):
     return response
 
 
-def test_saving_a_login_opens_the_sign_in_window_and_fetches(settings):
+def test_saving_a_login_fetches_out_of_sight(settings):
     sites = FakeSites()
     sites.answers["capital_one"] = 52300
     app = open_app(settings, sites)
     with TestClient(app, base_url="http://127.0.0.1") as window:
         window.get("/?token=t")
         page = link_with_login(window, "capital_one")
-        assert "A Chrome window is opening to sign in to Capital One" in page.text
+        assert "Chrome window" not in page.text
         app.state.refresher.wait()
-        assert sites.calls == [("capital_one", True)]
+        assert sites.calls == [("capital_one", False)]  # no window
         page = window.get("/").text
         assert "52,300" in page and "Up to date" in page and "Refresh now" in page
+
+
+def test_a_window_opens_only_when_you_click_sign_in(settings):
+    sites = FakeSites()
+    sites.answers["capital_one"] = fetching.NeedsPerson("Capital One wants to confirm it's you. Click Sign in.")
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        response = link_with_login(window, "capital_one")
+        app.state.refresher.wait()
+        dashboard = window.get("/").text
+        assert "Needs your sign-in" in dashboard and "Click Sign in" in dashboard
+        assert sites.calls == [("capital_one", False)]
+        sites.answers["capital_one"] = 52300
+        page = post_form(window, response.url.path + "/sign-in", {"back": "dashboard"}, token_from="/")
+        assert "A Chrome window is opening to sign in to Capital One" in page.text
+        app.state.refresher.wait()
+        assert sites.calls == [("capital_one", False), ("capital_one", True)]
+        assert "52,300" in window.get("/").text
 
 
 def test_every_launch_refreshes_quietly_with_the_same_browser(settings):
@@ -150,8 +185,11 @@ def test_the_app_says_what_a_site_wants_while_its_window_is_up(settings):
     app = open_app(settings, sites)
     with TestClient(app, base_url="http://127.0.0.1") as window:
         window.get("/?token=t")
-        sites.answers["chase"] = chase_asks
+        sites.answers["chase"] = fetching.NeedsPerson("Chase wants to confirm it's you. Click Sign in.")
         response = link_with_login(window, "chase")
+        app.state.refresher.wait()
+        sites.answers["chase"] = chase_asks
+        post_form(window, response.url.path + "/sign-in", {}, token_from=response.url.path)
         assert window_up.wait(10)
         for page in (window.get("/").text, window.get(response.url).text):
             assert "Waiting for you" in page
@@ -165,7 +203,7 @@ def test_the_app_says_what_a_site_wants_while_its_window_is_up(settings):
 def test_a_rejected_login_is_not_retried_until_saved_again(settings):
     sites = FakeSites()
     sites.answers["chase"] = fetching.LoginRejected(
-        "Chase didn't accept the saved username or password. Save it again."
+        "Chase didn't take the saved login. Click Sign in to sign in once; Award Wallet keeps the login that works."
     )
     app = open_app(settings, sites)
     with TestClient(app, base_url="http://127.0.0.1") as window:
@@ -180,7 +218,7 @@ def test_a_rejected_login_is_not_retried_until_saved_again(settings):
         page = post_form(window, "/refresh", {}, token_from="/")
         app.state.refresher.wait()
         assert sites.calls == []  # retrying a wrong password could lock the account
-        assert "Skipped Ultimate Rewards: the site didn&#39;t accept the saved login" in page.text
+        assert "Skipped Ultimate Rewards: the site didn&#39;t take the saved login" in page.text
 
         sites.answers["chase"] = 80000
         post_form(
@@ -190,7 +228,7 @@ def test_a_rejected_login_is_not_retried_until_saved_again(settings):
             token_from=response.url.path,
         )
         app.state.refresher.wait()
-        assert sites.calls == [("chase", True)]
+        assert sites.calls == [("chase", False)]
         assert "80,000" in window.get("/").text
 
 
@@ -266,9 +304,7 @@ def test_programs_refresh_at_the_same_time(settings):
     running, most = [], []
     lock = threading.Lock()
 
-    def slow_site(
-        provider, credentials, profile, *, with_person, screenshot_to=None, seed_cookies=None, on_needs_you=None
-    ):
+    def slow_site(provider, credentials, profile, *, with_person, **options):
         with lock:
             running.append(provider.key)
             most.append(len(running))
@@ -284,3 +320,64 @@ def test_programs_refresh_at_the_same_time(settings):
             link_with_login(window, provider)
         app.state.refresher.wait()
     assert max(most) >= 2
+
+
+def test_signing_in_after_a_turned_down_login_keeps_the_one_that_works(settings):
+    sites = FakeSites()
+    sites.answers["chase"] = fetching.LoginRejected("Chase didn't take the saved login.")
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        response = link_with_login(window, "chase")
+        app.state.refresher.wait()
+        dashboard = window.get("/").text
+        assert "Chase didn&#39;t take the saved login." in dashboard
+        assert f'action="/accounts/{response.url.path.rsplit("/", 1)[-1]}/sign-in"' in dashboard
+
+        def you_sign_in(on_needs_you, on_new_login):
+            on_new_login({"password": "the right one"})
+            return 80000
+
+        sites.answers["chase"] = you_sign_in
+        sites.typed.clear()
+        page = post_form(window, response.url.path + "/sign-in", {"back": "dashboard"}, token_from="/")
+        assert page.url.path == "/"
+        app.state.refresher.wait()
+        assert sites.typed == [False]  # at the window you sign in; the app doesn't try the old login again
+        with app.state.sessionmaker() as db:
+            account = db.query(LoyaltyAccount).one()
+            assert accounts.read_credentials(app.state.vault, account) == {
+                "username": "me",
+                "password": "the right one",
+            }
+            assert account.sync_status == SyncStatus.OK
+        assert app.state.refresher.browser_profile(account.id) == sites.profiles[-1]
+
+        sites.answers["chase"] = 80000
+        post_form(window, "/refresh", {}, token_from="/")
+        app.state.refresher.wait()
+        assert sites.logins[-1] == {"username": "me", "password": "the right one"}
+        assert sites.typed[-1] is True
+
+
+def test_the_same_balance_again_adds_no_history(settings):
+    sites = FakeSites()
+    sites.answers["united"] = 52300
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        response = link_with_login(window, "united")
+        app.state.refresher.wait()
+        for _ in range(3):
+            post_form(window, "/refresh", {}, token_from="/")
+            app.state.refresher.wait()
+        with app.state.sessionmaker() as db:
+            assert db.query(BalanceSnapshot).count() == 1
+        assert window.get(response.url).text.count('<td class="num">52,300</td>') == 1
+        assert "Updated just now" in window.get("/").text
+
+
+def test_a_browser_profile_stays_inside_the_browser_folder(app):
+    for not_an_id in ("", ".", "..", "../Diagnostics", "a/b"):
+        with pytest.raises(ValueError):
+            app.state.refresher.browser_profile(not_an_id)

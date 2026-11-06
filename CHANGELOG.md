@@ -4,6 +4,40 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-06
+
+### Changed
+- Refreshing is invisible. Chrome signs in and reads your balances with no window, no tab and no
+  icon in the Dock, and so does linking a program or saving a new login. Nothing pops up: when a
+  site wants something only you can give, like a code by text, the program shows a **Sign in**
+  button with a note saying what the site wants, and a Chrome window opens only when you click it.
+- The app types logins one key at a time, like a person. Capital One turned down logins that went
+  into its form all at once ("We didn't recognize that info"), which is why it kept asking you
+  to sign in.
+- When a site turns down the saved login, **Sign in** opens its window for you to sign in
+  yourself, and the app keeps the login that worked. It never types the old one again.
+- History shows each change in a balance, one entry a day at most. A refresh that finds the same
+  balance adds nothing, and **Updated** says when the balance was last checked.
+
+### Security
+- Only you can open the app's folder, and everything the app writes (its database, logs,
+  screenshots and each program's Chrome profile) is readable by you alone.
+- The window's pages run only the app's own scripts, can't be shown inside another site, aren't
+  kept on disk, and send no address to other sites. Requests from other websites are turned away.
+  The window's session lasts one launch, and the launch secret leaves the window's address as
+  soon as it's used.
+- Updates come only from this repository's own releases on GitHub, never follow a redirect off
+  HTTPS, and the .dmg must match the SHA-256 GitHub lists for it, or it's deleted and nothing is
+  installed.
+- Screenshots in Diagnostics black out every box on the page, so nothing typed shows in them.
+  Chrome no longer remembers what's typed into forms, and doesn't save downloads.
+- Releases are built only from the locked, hash-checked libraries, and the build has no way to
+  push to the repository.
+
+### Fixed
+- A page that breaks shows a page with a way back instead of "Internal Server Error", and the
+  details go to the Diagnostics log.
+
 ## [0.6.0] - 2026-11-06
 
 ### Added

@@ -245,6 +245,9 @@ td.nowrap { white-space: nowrap; }
 .header-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
 .header-actions .inline-form, .fetch-actions .inline-form { margin: 0; }
 .meta-warn { color: var(--warn); }
+/* A button on a program's card sits above the link that opens the card. */
+.card-action { position: relative; z-index: 1; margin: 0.5rem 0 0; }
+.button-small { padding: 6px 14px; font-size: 0.875rem; }
 .fetch-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
 details.manual summary { cursor: pointer; font-weight: 600; }
 details.manual[open] summary { margin-bottom: 1rem; }

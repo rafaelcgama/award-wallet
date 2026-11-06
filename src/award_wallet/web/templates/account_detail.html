@@ -18,7 +18,7 @@
   {% if latest %}
   <div class="balance balance-large">{{ latest.balance|number }} <span class="unit">{{ latest.unit }}</span> {{ rewards_link(provider) }}</div>
   <div class="meta">
-    Updated {{ latest.captured_at|time_ago }} ({{ latest.captured_at|datetime }}){% if latest.source == "manual" %}, entered by hand{% endif %}
+    Updated {{ checked_at|time_ago }} ({{ checked_at|datetime }}){% if latest.source == "manual" and checked_at == latest.captured_at %}, entered by hand{% endif %}
   </div>
   {% if latest.expirations %}
   <ul class="expirations">
@@ -42,7 +42,7 @@
     {% if account.id in needs_you %}
     <span class="meta-warn">{{ needs_you[account.id] }}</span>
     {% else %}
-    <span class="muted">Fetching your {{ provider.unit }} from {{ provider.name }}… If a Chrome window opened, finish signing in there.</span>
+    <span class="muted">Fetching your {{ provider.unit }} from {{ provider.name }}…</span>
     {% endif %}
     {% elif account.sync_status == "ok" %}
     <form method="post" action="/accounts/{{ account.id }}/refresh" class="inline-form">
@@ -55,7 +55,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit" class="button">Sign in to {{ provider.name }}</button>
     </form>
-    <span class="muted small">Opens {{ provider.name }} in a Chrome window and fills in your login. Enter the security code if asked; after that, Award Wallet fetches your balance by itself.</span>
+    <span class="muted small">Opens {{ provider.name }} in a Chrome window and fills in your login. Finish what {{ provider.name }} asks for, like a security code; after that, Award Wallet fetches your balance by itself, out of sight.</span>
     {% endif %}
   </div>
   {% endif %}
@@ -140,7 +140,7 @@
 
 <section class="card">
   <h2>History</h2>
-  <p class="muted small">Every balance is kept with its date, so you can see when {{ provider.unit }} came in or went out.</p>
+  <p class="muted small">Each change in your balance, with its date, so you can see when {{ provider.unit }} came in or went out. A day has one entry at most.</p>
   {% if history %}
   <div class="table-wrap">
     <table>
@@ -171,7 +171,7 @@
   <p class="muted small">
     Deletes its saved login and balance history from Award Wallet. Your {{ provider.name }} account isn't affected.
   </p>
-  <form method="post" action="/accounts/{{ account.id }}/delete" onsubmit="return confirm('Remove this program and its history?')">
+  <form method="post" action="/accounts/{{ account.id }}/delete" data-confirm="Remove this program and its history?">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="button button-danger">Remove program</button>
   </form>
