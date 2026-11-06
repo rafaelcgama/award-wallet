@@ -582,3 +582,25 @@ def test_a_screenshot_blacks_out_what_was_typed(tmp_path):
         playwright.stop()
     assert on_page == in_frame == [0, 0, 0]
     assert around == [255, 255, 255]
+
+
+def test_each_frame_is_looked_at_once_for_every_label():
+    # Walking a big page is what a look costs, so all the labels are read from one walk.
+    looked = []
+
+    class Frame:
+        def __init__(self, *found):
+            self.found = list(found)
+
+        def evaluate(self, script, arguments):
+            looked.append(arguments[0])
+            return self.found
+
+    nothing = {"number": None, "seen": "no label"}
+    main = Frame(nothing, {"number": "52,300", "seen": "found"})
+    inner = Frame({"number": "1,000", "seen": "found"}, nothing)
+    page = type("Page", (), {"main_frame": main, "frames": [main, inner]})()
+
+    # The first label has the first say, in whichever frame it is.
+    assert fetching.read_by_label(page, ("first", "second")) == (1000, "found the label and its number")
+    assert looked == [["first", "second"], ["first", "second"]]

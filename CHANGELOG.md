@@ -4,6 +4,13 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-11-06
+
+### Changed
+- Each look for the balance reads all of a program's labels in one pass over the page, instead
+  of one pass per label. For American Express, with three labels, a look at a page of 40,000
+  elements went from about 370 ms to 135 ms, which leaves Chrome more time between looks.
+
 ## [0.11.2] - 2026-11-06
 
 ### Changed

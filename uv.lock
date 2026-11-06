@@ -62,7 +62,7 @@ wheels = [
 
 [[package]]
 name = "award-wallet"
-version = "0.11.2"
+version = "0.11.3"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
