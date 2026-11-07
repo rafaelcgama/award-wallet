@@ -48,14 +48,6 @@ Setup installs Milestash for you alone, with no administrator password. On a PC 
 Control** turned on, Windows only runs signed apps, so Milestash can't be installed there unless
 Smart App Control is turned off in **Windows Security → App & browser control**.
 
-### Coming from Award Wallet
-
-Milestash was called Award Wallet until version 0.14.0, and Award Wallet can't update itself to
-Milestash: the repository was renamed too, and Award Wallet only installs downloads from the old
-name (its **Update now** says the release has no Mac app attached yet). Quit Award Wallet, install
-Milestash as above, then drag **Award Wallet** to the Trash. The first time Milestash opens, it
-moves your programs, logins and history over by itself.
-
 ## Using Milestash
 
 It's a personal app: everything stays on your computer, nothing runs in the background, and
@@ -137,8 +129,6 @@ What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 Everything lives in one folder: `~/Library/Application Support/Milestash` on a Mac, and
 `%LOCALAPPDATA%\Milestash` on Windows (paste that into File Explorer's address bar to open it).
-Award Wallet kept it in `~/Library/Application Support/Award Wallet`: Milestash renames that
-folder the first time it opens, and keeps reading the keys Award Wallet saved.
 
 | | What it holds |
 | --- | --- |
@@ -336,11 +326,6 @@ Windows.
   at the top (`releases/latest/download/<name>`) always fetch the newest one. The installed app
   finds its own file by how the name ends, `.dmg` or `-Setup.exe` (`updates.download_ending`). A
   test checks that the README, `release.yml` and the app agree on the names.
-- The repository was called `award-wallet`, like the app, and GitHub sends the old address to
-  the new one. Award Wallet 0.13 and older only install updates from the old address, so moving
-  to Milestash takes one install by hand (see **Updating**). Keys named `AW_*` in `settings.env`
-  still work, and the installed app moves Award Wallet's data to the new name the first time it
-  opens (`desktop.move_old_data`). `make app` uses the data where it is.
 - When pull requests build on each other, merge them in order with **Create a merge commit**.
   Squashing makes each later one conflict on the version number. Merged in a row, a version in
   between may get no release of its own, because a release run still waiting when a newer merge

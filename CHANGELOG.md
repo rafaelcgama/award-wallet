@@ -1,7 +1,6 @@
 # Changelog
 
-Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
-[semantic versioning](https://semver.org).
+Notable changes to Milestash. Versions follow [semantic versioning](https://semver.org).
 
 ## [Unreleased]
 
@@ -28,12 +27,6 @@ Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
 - The Windows build checks that the packed app starts and can start Chrome before it's released.
 
 ### Changed
-- Award Wallet is now **Milestash**, everywhere: the window, the menus, Applications, the Dock,
-  the data folder, the release downloads and the repository, `rafaelcgama/milestash` (the old
-  address leads there). Award Wallet's **Update now** can't install it, because the repository
-  moved: install it by hand once, as the README says. It keeps everything: the
-  first time it opens, the data folder becomes `~/Library/Application Support/Milestash` by
-  itself, with your logins, their keys, the history and each program's Chrome profile.
 - Releases carry the Mac .dmg and the Windows Setup.exe, and the app downloads the one for its
   computer. Nothing changes on a Mac.
 
@@ -74,7 +67,7 @@ Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
 ## [0.11.4] - 2026-11-06
 
 ### Fixed
-- Installing an update no longer makes macOS say Award Wallet "was prevented from modifying apps
+- Installing an update no longer makes macOS say Milestash "was prevented from modifying apps
   on your Mac". The installer used to clear the "downloaded from the internet" mark from the new
   app once it was in Applications, which macOS counts as one app changing another. It now copies
   the app without that mark instead. The notice still shows once, while updating to this version,
@@ -127,7 +120,7 @@ Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
 - When a site changes its balance page, a refresh says it couldn't find your points or miles
   there. Before, if the page took more than 15 seconds to open, the program said it needed you to
   finish signing in, and **Sign in** then waited five minutes for nothing.
-- While you sign in, the note above the page says so too when Award Wallet can't find the balance
+- While you sign in, the note above the page says so too when Milestash can't find the balance
   on it, so you know to click **Stop**.
 - With no programs linked yet, the dashboard names every program you can link, American Express
   and Delta included.
@@ -137,7 +130,7 @@ Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
 
 ### Changed
 - The About window no longer shows the folder your data is kept in. Nothing moved: it's still
-  `~/Library/Application Support/Award Wallet`, as the README says.
+  `~/Library/Application Support/Milestash`, as the README says.
 
 ## [0.10.0] - 2026-11-06
 
@@ -163,7 +156,7 @@ Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
 ## [0.8.0] - 2026-11-06
 
 ### Changed
-- **Sign in** happens inside Award Wallet. The site's page shows in the app's window, where you
+- **Sign in** happens inside Milestash. The site's page shows in the app's window, where you
   click and type like in a browser to finish what the site asks, like a code by text, and
   **Stop** ends it. No Chrome window opens anymore, for anything.
 - Sign in now uses the same hidden Chrome as the refreshes. Capital One trusted the Chrome window
@@ -281,7 +274,7 @@ Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
 
 ### Changed
 - All programs refresh at the same time, so balances arrive sooner when the app opens.
-- Award Wallet is now only a Mac app for one person: the sign-up and sign-in pages, password
+- Milestash is now only a Mac app for one person: the sign-up and sign-in pages, password
   hashing, the Terminal web server and its settings are gone. Fewer parts, fewer things to break.
 - No open-source license: the code is public to read, but all rights are reserved.
 
@@ -304,7 +297,7 @@ Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
 ## [0.3.0] - 2026-10-31
 
 ### Added
-- Automatic balances for United, Chase and Capital One. Award Wallet signs in through Google
+- Automatic balances for United, Chase and Capital One. Milestash signs in through Google
   Chrome with your saved login and reads the balance. The first time, a Chrome window opens so you
   can enter the site's security code; after that the browser is remembered and refreshes run
   quietly.
@@ -315,10 +308,10 @@ Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
 ## [0.2.0] - 2026-10-31
 
 ### Added
-- Mac app: Award Wallet opens in its own window from Applications, with no Terminal and no
-  sign-in screen. Data lives in `~/Library/Application Support/Award Wallet`.
+- Mac app: Milestash opens in its own window from Applications, with no Terminal and no
+  sign-in screen. Data lives in `~/Library/Application Support/Milestash`.
 - Wallet app icon.
-- About page and Check for Updates, in the Award Wallet and Help menus.
+- About page and Check for Updates, in the Milestash and Help menus.
 - A link from each program to its rewards site, to plan trips and transfer points.
 - Makefile, lint (ruff), CI and a release workflow that builds the .dmg.
 
