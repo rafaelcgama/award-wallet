@@ -1,130 +1,63 @@
 # Milestash
 
-An app for Mac and Windows that shows all your airline miles and credit card points in one place.
-It signs in to each program for you, reads the balance, and keeps the history, so you don't have
-to visit every site. Programs so far: American AAdvantage, Delta SkyMiles, United MileagePlus,
-Chase Ultimate Rewards, Capital One Miles and American Express Membership Rewards.
+**All your airline miles and credit card points in one place.**
+
+Milestash signs in to each of your loyalty programs, reads the balance and keeps its history, so
+you don't have to visit every site. It runs on your own Mac or Windows PC: your logins are
+encrypted there and only ever sent to each program's own website.
+
+Supported programs: American AAdvantage, Delta SkyMiles, United MileagePlus, Chase Ultimate
+Rewards, Capital One Miles and American Express Membership Rewards.
+
+## Download
+
+| Download | Runs on |
+| --- | --- |
+| **[Download for macOS](https://github.com/rafaelcgama/milestash/releases/latest/download/Milestash.dmg)** | Macs with an Apple chip (M1 or newer) |
+| **[Download for Windows](https://github.com/rafaelcgama/milestash/releases/latest/download/Milestash-Setup.exe)** | Windows 10 (version 1809 or newer) and Windows 11 |
+
+These links always get the newest version; every version is on the
+[Releases](https://github.com/rafaelcgama/milestash/releases) page. Milestash also needs
+[Google Chrome](https://www.google.com/chrome/), which it uses to sign in to the programs'
+websites.
+
+## Install
+
+### macOS
+
+1. Open **Milestash.dmg** and drag **Milestash** onto **Applications**.
+2. Open Milestash from Applications. The first time only, macOS says it "could not verify"
+   Milestash, because the app isn't signed with a paid Apple certificate: click **Done**, then go
+   to **System Settings → Privacy & Security** and click **Open Anyway**.
+
+Or install it from Terminal in one step, without that warning:
+
+```sh
+[ -e /Applications/Milestash.app ] || { curl -fL -o /tmp/Milestash.dmg https://github.com/rafaelcgama/milestash/releases/latest/download/Milestash.dmg && hdiutil attach -quiet -nobrowse -mountpoint /tmp/Milestash /tmp/Milestash.dmg && ditto /tmp/Milestash/Milestash.app /Applications/Milestash.app; hdiutil detach -quiet /tmp/Milestash; }; open /Applications/Milestash.app
+```
+
+### Windows
+
+1. Open **Milestash-Setup.exe**. The first time only, Windows says "Windows protected your PC",
+   because Setup isn't signed with a paid certificate: click **More info**, then **Run anyway**.
+2. Click **Install**, then **Finish**. Milestash opens, and it's in the Start menu from then on.
+
+Setup installs Milestash for you alone, with no administrator password. On a PC with **Smart App
+Control** turned on, Windows only runs signed apps, so Milestash can't be installed there unless
+Smart App Control is turned off in **Windows Security → App & browser control**.
+
+### Coming from Award Wallet
+
+Milestash was called Award Wallet until version 0.14.0, and Award Wallet can't update itself to
+Milestash: the repository was renamed too, and Award Wallet only installs downloads from the old
+name (its **Update now** says the release has no Mac app attached yet). Quit Award Wallet, install
+Milestash as above, then drag **Award Wallet** to the Trash. The first time Milestash opens, it
+moves your programs, logins and history over by itself.
+
+## Using Milestash
 
 It's a personal app: everything stays on your computer, nothing runs in the background, and
 nothing sits in the menu bar or next to the clock. Closing the window quits it.
-
-Milestash was called Award Wallet until version 0.14.0. Switching from Award Wallet keeps
-everything: your programs, logins, history and each site's memory of your computer move over by
-themselves (see **Updating**).
-
-## Install on a Mac
-
-You need a Mac with an Apple chip (M1 or newer) and **Google Chrome**, which the app uses to sign
-in to the programs' websites. Download the app, or build it yourself.
-
-### Download it
-
-1. Download the newest `Milestash-vX.Y.Z.dmg` from the repository's **Releases** page.
-2. Open it and drag **Milestash** onto **Applications**. (Opened straight from the .dmg, it
-   offers to move itself there.)
-3. The first time only: the app isn't signed with a paid Apple developer certificate, so macOS
-   says it "could not verify" Milestash. Click **Done**, then either run
-   `xattr -dr com.apple.quarantine "/Applications/Milestash.app"` in Terminal, or go to
-   **System Settings → Privacy & Security** and click **Open Anyway**.
-
-### Build it yourself
-
-No programming needed: you paste two lines into Terminal and wait a few minutes. A copy you build
-on your own Mac opens without the "could not verify" warning.
-
-1. **Get the code.** On this repository's GitHub page, click the green **Code** button, then
-   **Download ZIP**. In your **Downloads** folder, double-click `milestash-main.zip` if your
-   browser didn't unzip it already. You now have a folder named `milestash-main`.
-2. **Open Terminal.** Press ⌘ Space, type `Terminal` and press Return.
-3. **Install uv**, a free tool that downloads what the build needs, like Python. Paste this line
-   into Terminal and press Return:
-
-   ```sh
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
-
-4. **Build the app.** Paste this line and press Return:
-
-   ```sh
-   cd ~/Downloads/milestash-main && bash build_dmg.sh
-   ```
-
-   If macOS asks whether Terminal may access files in your Downloads folder, click **Allow**.
-   The build downloads what it needs, runs the app's tests and packs the app. When it says
-   `Done: build/Milestash.dmg`, a Finder window opens on the `build` folder.
-5. **Install it.** Double-click **Milestash.dmg**, drag **Milestash** onto
-   **Applications**, then eject the disk image (the ⏏ next to it in Finder's sidebar). The
-   `milestash-main` folder and the .zip can go to the Trash.
-
-**Update now** works in a copy you built, too: it installs the newest release.
-
-If something goes wrong:
-
-- **"uv is missing"**: step 3 didn't finish. Do it again, then quit Terminal (⌘ Q), open it again
-  and repeat step 4.
-- **"no such file or directory"**: the folder has another name or isn't in Downloads. Type `cd `
-  (with a space after it), drag the folder from Finder onto the Terminal window and press Return.
-  Then paste `bash build_dmg.sh` and press Return.
-- **It stops at "Running tests"**: something in this copy of the code doesn't work on your Mac.
-  Copy what Terminal shows into a new issue on the repository's **Issues** page.
-- **On an Intel Mac** it stops while installing `cryptography`: that library is only published
-  ready to use for Apple chips, so the build needs a Mac with an Apple chip.
-
-## Install on Windows
-
-You need Windows 10 (version 1809 or newer) or Windows 11 and **Google Chrome**, which the app
-uses to sign in to the programs' websites. Download the app, or build it yourself.
-
-### Download it
-
-1. Download the newest `Milestash-vX.Y.Z-Setup.exe` from the repository's **Releases** page.
-2. Open it. The first time only: Setup isn't signed with a paid code-signing certificate, so
-   Windows says "Windows protected your PC". Click **More info**, then **Run anyway**.
-3. Setup installs Milestash for you alone, with no administrator password, adds it to the
-   Start menu and opens it. Tick **Create a desktop shortcut** in Setup if you want one.
-
-If Windows says **Smart App Control** blocked Setup, that PC only runs signed apps, and
-Milestash isn't signed: it can't be installed there unless Smart App Control is turned off in
-**Windows Security → App & browser control**.
-
-### Build it yourself
-
-No programming needed: you paste a few lines into PowerShell and wait a few minutes.
-
-1. **Get the code.** On this repository's GitHub page, click the green **Code** button, then
-   **Download ZIP**, and save it in your **Downloads** folder.
-2. **Open PowerShell.** Press the Windows key, type `PowerShell` and press Enter.
-3. **Install uv**, a free tool that downloads what the build needs, like Python. Paste this line
-   into PowerShell and press Enter, then close PowerShell and open it again:
-
-   ```powershell
-   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-   ```
-
-4. **Install Inno Setup**, the free tool that makes the installer:
-
-   ```powershell
-   winget install --exact --id JRSoftware.InnoSetup
-   ```
-
-5. **Build the app.** Paste these lines and press Enter:
-
-   ```powershell
-   Expand-Archive ~\Downloads\milestash-main.zip ~\Downloads -Force
-   cd ~\Downloads\milestash-main
-   powershell -ExecutionPolicy Bypass -File build_windows.ps1
-   ```
-
-   The build downloads what it needs, runs the app's tests, packs the app and checks that it
-   starts. It ends with `Done: build\Milestash-Setup.exe`.
-6. **Install it.** Run `build\Milestash-Setup.exe` (type `start build\Milestash-Setup.exe`
-   and press Enter). The `milestash-main` folder and the .zip can go to the Recycle Bin.
-
-If it stops with **"uv is missing"** or **"Inno Setup is missing"**, do step 3 or 4 again, then
-close PowerShell, open it again and repeat step 5 from its `cd` line. If it stops at **"Running
-tests"**, copy what PowerShell shows into a new issue on the repository's **Issues** page.
-
-## Using it
 
 - **Link a program** with its username and password. The app signs in and fetches the balance
   out of sight. Each program has its own Chrome profile, kept by the app, so the site remembers
@@ -175,9 +108,7 @@ tests"**, copy what PowerShell shows into a new issue on the repository's **Issu
   deletes its history. Both delete the program's Chrome profile; your account with the program
   isn't affected.
 
-What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
-
-## Updating
+## Updates
 
 The app checks for a new version each time it opens and shows a banner when there is one. Click
 **Update now**: a progress bar follows the download, then the app closes, replaces itself and
@@ -193,16 +124,12 @@ On a Mac, the app replaces itself in your Applications folder. Opened from anywh
 .dmg, or Downloads), it shows **Move to Applications**, which puts it there and reopens it from
 there. Then eject the .dmg or delete the other copy, so you don't open an old one by mistake.
 
-Award Wallet, the app's old name, can't update itself to Milestash: the repository was renamed
-too, and Award Wallet only installs downloads from the old name (its **Update now** says the
-release has no Mac app attached yet). So install Milestash by hand once: quit Award Wallet, follow
-**Download it** above, then drag **Award Wallet** to the Trash. The first time Milestash opens, it
-moves your data over by itself, and from then on **Update now** works as usual.
-
 If macOS says Milestash "was prevented from modifying apps on your Mac" while it updates, close
 the notice and leave Milestash switched off under **System Settings → Privacy & Security → App
 Management**. The update installs anyway, and switching it on would let the app change or delete
 any app on your Mac.
+
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Your data
 
@@ -218,11 +145,8 @@ folder the first time it opens, and keeps reading the keys Award Wallet saved.
 | `Browser/` | Each program's Chrome profile: the site's cookies, which keep it signed in and remember this computer. Deleting one makes that site ask for a security code again. |
 | `Diagnostics/` | A log of what the app did and screenshots of pages where a fetch failed. Safe to send when something needs fixing: the screenshots black out every box, so nothing typed shows (cover account numbers the page itself shows). **Help → Show Diagnostics in Finder** (**in File Explorer** on Windows) opens it. |
 
-To uninstall on a Mac, drag the app to the Trash. On Windows, go to **Settings → Apps → Installed
-apps**, click the **⋯** next to Milestash and choose **Uninstall**. Either way your data stays;
-to remove it too, delete that folder.
+### Security
 
-**Security.**
 - Program logins are encrypted with AES-256-GCM before they're saved, and each one is tied to its
   account. They're only ever sent to the program's own website.
 - The sites' cookies stay in each program's Chrome profile, which Chrome encrypts the same way it
@@ -240,6 +164,68 @@ to remove it too, delete that folder.
   text reach the site's page from it, each one checked first. Nothing you type there is logged.
 - Updates come only from this repository's releases on GitHub, over HTTPS, and must match the
   SHA-256 GitHub lists for them, or nothing is installed.
+
+### Uninstall
+
+To uninstall on a Mac, drag the app to the Trash. On Windows, go to **Settings → Apps → Installed
+apps**, click the **⋯** next to Milestash and choose **Uninstall**. Either way your data stays;
+to remove it too, delete that folder.
+
+## Build from source
+
+Building Milestash yourself needs [uv](https://docs.astral.sh/uv/), which fetches Python and
+everything else the build uses. Get the code with git:
+
+```sh
+git clone https://github.com/rafaelcgama/milestash.git
+cd milestash
+```
+
+or download it as a
+[ZIP file](https://github.com/rafaelcgama/milestash/archive/refs/heads/main.zip) and unzip it
+into a folder named `milestash-main`.
+
+### macOS
+
+On a Mac with an Apple chip, install uv once, then open a new Terminal window:
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then, in the code's folder:
+
+```sh
+bash build_dmg.sh
+```
+
+The build runs the tests and makes `build/Milestash.dmg`, which you install as above. A copy you
+build on your own Mac opens without the "could not verify" warning, and its **Update now**
+installs the newest release. (On an Intel Mac the build stops while installing `cryptography`,
+which is only published ready-made for Apple chips.)
+
+### Windows
+
+Install uv and [Inno Setup](https://jrsoftware.org/isinfo.php), which makes the installer, once,
+then open a new PowerShell window:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+winget install --exact --id JRSoftware.InnoSetup
+```
+
+Then, in the code's folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build_windows.ps1
+```
+
+The build runs the tests, checks that the packed app starts, and makes
+`build\Milestash-Setup.exe`, which you install as above.
+
+If a build stops at "Running tests", something in that copy of the code doesn't work on your
+computer: [open an issue](https://github.com/rafaelcgama/milestash/issues/new) with what the
+terminal shows.
 
 ## How it's built
 
@@ -344,6 +330,10 @@ Windows.
   both to one GitHub release, and the installed apps offer it. If either build fails, nothing is
   released until it's fixed or the run's **Re-run failed jobs** succeeds. Merging without a
   version bump releases nothing.
+- Every release names its files `Milestash.dmg` and `Milestash-Setup.exe`, so the download links
+  at the top (`releases/latest/download/<name>`) always fetch the newest one. The installed app
+  finds its own file by how the name ends, `.dmg` or `-Setup.exe` (`updates.download_ending`). A
+  test checks that the README, `release.yml` and the app agree on the names.
 - The repository was called `award-wallet`, like the app, and GitHub sends the old address to
   the new one. Award Wallet 0.13 and older only install updates from the old address, so moving
   to Milestash takes one install by hand (see **Updating**). Keys named `AW_*` in `settings.env`

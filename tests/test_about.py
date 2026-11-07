@@ -129,6 +129,30 @@ def test_each_computer_downloads_its_own_app(monkeypatch, on_windows, app):
     assert (release.download_url, release.download_sha256) == app
 
 
+@pytest.mark.parametrize(("on_windows", "name"), [(False, "Milestash.dmg"), (True, "Milestash-Setup.exe")])
+def test_downloads_named_without_the_version_are_found_too(monkeypatch, on_windows, name):
+    # From 0.14.1 on, every release names its files the same, so the README can link to the newest.
+    monkeypatch.setattr(system, "on_windows", lambda: on_windows)
+    payload = _release_payload()
+    for asset, fixed in zip(payload["assets"], ("Milestash.dmg", "Milestash-Setup.exe"), strict=True):
+        asset["name"], asset["browser_download_url"] = fixed, f"{RELEASES}/download/v99.0.0/{fixed}"
+    _fake_github(monkeypatch, payload)
+    assert updates.latest_release("rafaelcgama/milestash").download_url == f"{RELEASES}/download/v99.0.0/{name}"
+
+
+def test_the_readme_links_to_the_files_every_release_has(monkeypatch):
+    # The README's download links fetch the newest release's files by name: release.yml has to
+    # publish exactly those names, and each computer's app has to recognize its own.
+    root = Path(__file__).parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    workflow = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    for on_windows, name in ((False, "Milestash.dmg"), (True, "Milestash-Setup.exe")):
+        monkeypatch.setattr(system, "on_windows", lambda on_windows=on_windows: on_windows)
+        assert f"{RELEASES}/latest/download/{name}" in readme
+        assert f"path: build/{name}\n" in workflow
+        assert name.endswith(updates.download_ending())
+
+
 def test_windows_never_downloads_the_mac_app(monkeypatch):
     # Say the release is out but its Setup isn't attached yet.
     monkeypatch.setattr(system, "on_windows", lambda: True)
