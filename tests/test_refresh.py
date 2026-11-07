@@ -119,12 +119,14 @@ def test_three_months_before_the_miles_expire_the_program_says_what_to_do(settin
         app.state.refresher.wait()
         page = window.get("/").text
         assert 'class="expiry-alert"' in page and "the date moves 24 months out" in page
+        assert f"Miles expire on {soon:%b} {soon.day}, {soon.year}" in page and ">in 80 days<" in page
         # Further out, it's a quiet line with the date, no alert.
         sites.expiring["american"] = [Expiration(date.today() + timedelta(days=200))]
         post_form(window, "/refresh", {}, token_from="/")
         app.state.refresher.wait()
         page = window.get("/").text
-        assert 'class="expiry-alert"' not in page and "Balance expires" in page
+        assert 'class="expiry-alert"' not in page and "AAdvantage miles expire on" in page
+        assert "unless the account has some activity before then" in page and " days)" not in page
 
 
 def until(condition, seconds=10):

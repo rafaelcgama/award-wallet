@@ -1,5 +1,14 @@
+{# The alert's headline, with a countdown that app.js moves on at midnight if the window stays open. #}
 {% macro expiration_text(lot, unit) -%}
-{% if lot.amount %}{{ lot.amount|number }} {{ unit }} expire{% else %}Balance expires{% endif %} {{ lot.expires_on|date }} ({{ lot.expires_on|days_until }})
+{% if lot.amount %}{{ lot.amount|number }} {{ unit }}{% else %}{{ unit|capitalize }}{% endif %} expire on {{ lot.expires_on|date }}
+(<span class="countdown" data-expires-on="{{ lot.expires_on.isoformat() }}">{{ lot.expires_on|days_until }}</span>)
+{%- endmacro %}
+
+{# When a balance expires, as a plain sentence: no countdown, which only the alert shows. #}
+{% macro expiry_line(lot, unit, provider) -%}
+{% if lot.amount %}{{ lot.amount|number }} {{ unit }} expire on {{ lot.expires_on|date }}.
+{%- elif provider.expires_on_text %}{{ provider.expires_on_text|replace("{date}", lot.expires_on|date) }}
+{%- else %}The balance expires on {{ lot.expires_on|date }}.{% endif %}
 {%- endmacro %}
 
 {% macro expiry_alert(lot, unit, hint) -%}

@@ -69,6 +69,9 @@ class Provider:
     # group 1 is the date, like "Jan 3, 2028" or "01/03/2028". Matched on the words around the date,
     # never on where it sits in the page, so a redesign of the page doesn't lose it.
     expiration_patterns: ClassVar[tuple[str, ...]] = ()
+    # How the card says when the whole balance expires, while that's more than three months away;
+    # {date} stands for the date. Without one it says "The balance expires on {date}."
+    expires_on_text: ClassVar[str | None] = None
     # What to do when an expiration is near (see EXPIRES_SOON), shown with the alert.
     keep_alive_hint: ClassVar[str] = "Use them before then, or check the program's site."
 
