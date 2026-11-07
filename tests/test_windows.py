@@ -8,8 +8,9 @@ import uuid
 from pathlib import Path
 
 import pytest
+from fakebank import FakeBank, serve
 
-from award_wallet import desktop, fetching, system, windows
+from milestash import desktop, fetching, system, windows
 
 on_windows = pytest.mark.skipif(sys.platform != "win32", reason="asks Windows itself")
 
@@ -38,7 +39,7 @@ def test_the_installed_chromes_version_is_its_newest_folder(monkeypatch, tmp_pat
 
 
 def test_windows_chrome_tells_sites_it_is_chrome_on_windows(monkeypatch):
-    monkeypatch.delenv("AW_BROWSER_PATH", raising=False)
+    monkeypatch.delenv("MILESTASH_BROWSER_PATH", raising=False)
     monkeypatch.setattr(system, "on_windows", lambda: True)
     monkeypatch.setattr(windows, "chrome_version", lambda: "142.0.7444.60")
     assert fetching.chrome_user_agent() == (
@@ -63,7 +64,7 @@ def test_the_screen_a_site_sees_matches_windows_display_scale(monkeypatch):
     # A 2560x1440 screen at 150%: pages measure it as 1707x960, with 1.5 pixels to each unit.
     monkeypatch.setattr(system, "on_windows", lambda: True)
     monkeypatch.setattr(windows, "screen", lambda: (1707, 960, 1.5))
-    monkeypatch.delenv("AW_BROWSER_PATH", raising=False)
+    monkeypatch.delenv("MILESTASH_BROWSER_PATH", raising=False)
     monkeypatch.setattr(windows, "chrome_version", lambda: None)
     args = fetching._launch_options()["args"]
     assert "--screen-info={0,0 2560x1440 devicePixelRatio=1.5}" in args
@@ -86,8 +87,8 @@ def test_a_screen_windows_wont_describe_is_left_to_chrome(monkeypatch):
 def test_only_one_copy_runs_at_a_time(monkeypatch):
     import ctypes
 
-    # A name of its own, so an Award Wallet open on this PC doesn't count.
-    monkeypatch.setattr(windows, "MUTEX_NAME", f"AwardWalletTest-{uuid.uuid4()}")
+    # A name of its own, so a Milestash open on this PC doesn't count.
+    monkeypatch.setattr(windows, "MUTEX_NAME", f"MilestashTest-{uuid.uuid4()}")
     monkeypatch.setattr(windows, "_mutex", None)
     assert windows.claim_single_instance()
     try:
@@ -98,7 +99,7 @@ def test_only_one_copy_runs_at_a_time(monkeypatch):
 
 @on_windows
 def test_bringing_back_a_window_that_isnt_there_does_nothing():
-    windows.show_running_copy(f"Award Wallet {uuid.uuid4()}")
+    windows.show_running_copy(f"Milestash {uuid.uuid4()}")
 
 
 @on_windows
@@ -114,7 +115,7 @@ def test_windows_describes_this_pc():
 
 @on_windows
 def test_the_data_folder_is_in_local_app_data():
-    assert desktop.data_dir() == Path(os.environ["LOCALAPPDATA"]) / "Award Wallet"
+    assert desktop.data_dir() == Path(os.environ["LOCALAPPDATA"]) / "Milestash"
 
 
 needs_chrome = pytest.mark.skipif(
@@ -130,16 +131,24 @@ def test_the_installed_chromes_version_is_found():
 
 @needs_chrome
 def test_the_hidden_chrome_is_the_installed_google_chrome_and_says_so(monkeypatch, tmp_path):
-    # The way the app starts it, rather than the tests' AW_BROWSER_PATH.
-    monkeypatch.delenv("AW_BROWSER_PATH", raising=False)
+    # The way the app starts it, rather than the tests' MILESTASH_BROWSER_PATH.
+    monkeypatch.delenv("MILESTASH_BROWSER_PATH", raising=False)
+    # Chrome only tells secure pages about the computer: a site's https:// ones, or one on this PC.
+    server, _, url = serve(FakeBank())
     playwright, context = fetching.browser_launcher(tmp_path / "profile")
     try:
         page = context.pages[0] if context.pages else context.new_page()
+        page.goto(url)
         agent = page.evaluate("navigator.userAgent")
-        platform = page.evaluate("navigator.userAgentData.platform")
+        hints = page.evaluate("navigator.userAgentData.getHighEntropyValues(['platformVersion'])")
     finally:
         context.close()
         playwright.stop()
+        server.should_exit = True
+    major = windows.chrome_version().split(".")[0]
     assert "Windows NT 10.0; Win64; x64" in agent and "Headless" not in agent
-    assert f"Chrome/{windows.chrome_version().split('.')[0]}.0.0.0" in agent
-    assert platform == "Windows"
+    assert f"Chrome/{major}.0.0.0" in agent
+    # Google Chrome itself says it's Google Chrome, of the version the user agent gives.
+    assert {"brand": "Google Chrome", "version": major} in hints["brands"]
+    version = windows.platform_version(windows.build_number())
+    assert (hints["platform"], hints["platformVersion"]) == ("Windows", version)

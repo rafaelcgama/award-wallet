@@ -1,4 +1,4 @@
-# Award Wallet
+# Milestash
 
 An app for Mac and Windows that shows all your airline miles and credit card points in one place.
 It signs in to each program for you, reads the balance, and keeps the history, so you don't have
@@ -8,6 +8,10 @@ Chase Ultimate Rewards, Capital One Miles and American Express Membership Reward
 It's a personal app: everything stays on your computer, nothing runs in the background, and
 nothing sits in the menu bar or next to the clock. Closing the window quits it.
 
+Milestash was called Award Wallet until version 0.14.0. Updating from Award Wallet keeps
+everything: your programs, logins, history and each site's memory of your computer move over by
+themselves.
+
 ## Install on a Mac
 
 You need a Mac with an Apple chip (M1 or newer) and **Google Chrome**, which the app uses to sign
@@ -15,12 +19,12 @@ in to the programs' websites. Download the app, or build it yourself.
 
 ### Download it
 
-1. Download the newest `Award-Wallet-vX.Y.Z.dmg` from the repository's **Releases** page.
-2. Open it and drag **Award Wallet** onto **Applications**. (Opened straight from the .dmg, it
+1. Download the newest `Milestash-vX.Y.Z.dmg` from the repository's **Releases** page.
+2. Open it and drag **Milestash** onto **Applications**. (Opened straight from the .dmg, it
    offers to move itself there.)
 3. The first time only: the app isn't signed with a paid Apple developer certificate, so macOS
-   says it "could not verify" Award Wallet. Click **Done**, then either run
-   `xattr -dr com.apple.quarantine "/Applications/Award Wallet.app"` in Terminal, or go to
+   says it "could not verify" Milestash. Click **Done**, then either run
+   `xattr -dr com.apple.quarantine "/Applications/Milestash.app"` in Terminal, or go to
    **System Settings → Privacy & Security** and click **Open Anyway**.
 
 ### Build it yourself
@@ -29,8 +33,8 @@ No programming needed: you paste two lines into Terminal and wait a few minutes.
 on your own Mac opens without the "could not verify" warning.
 
 1. **Get the code.** On this repository's GitHub page, click the green **Code** button, then
-   **Download ZIP**. In your **Downloads** folder, double-click `award-wallet-main.zip` if your
-   browser didn't unzip it already. You now have a folder named `award-wallet-main`.
+   **Download ZIP**. In your **Downloads** folder, double-click `milestash-main.zip` if your
+   browser didn't unzip it already. You now have a folder named `milestash-main`.
 2. **Open Terminal.** Press ⌘ Space, type `Terminal` and press Return.
 3. **Install uv**, a free tool that downloads what the build needs, like Python. Paste this line
    into Terminal and press Return:
@@ -42,15 +46,15 @@ on your own Mac opens without the "could not verify" warning.
 4. **Build the app.** Paste this line and press Return:
 
    ```sh
-   cd ~/Downloads/award-wallet-main && bash build_dmg.sh
+   cd ~/Downloads/milestash-main && bash build_dmg.sh
    ```
 
    If macOS asks whether Terminal may access files in your Downloads folder, click **Allow**.
    The build downloads what it needs, runs the app's tests and packs the app. When it says
-   `Done: build/Award Wallet.dmg`, a Finder window opens on the `build` folder.
-5. **Install it.** Double-click **Award Wallet.dmg**, drag **Award Wallet** onto
+   `Done: build/Milestash.dmg`, a Finder window opens on the `build` folder.
+5. **Install it.** Double-click **Milestash.dmg**, drag **Milestash** onto
    **Applications**, then eject the disk image (the ⏏ next to it in Finder's sidebar). The
-   `award-wallet-main` folder and the .zip can go to the Trash.
+   `milestash-main` folder and the .zip can go to the Trash.
 
 **Update now** works in a copy you built, too: it installs the newest release.
 
@@ -73,14 +77,14 @@ uses to sign in to the programs' websites. Download the app, or build it yoursel
 
 ### Download it
 
-1. Download the newest `Award-Wallet-vX.Y.Z-Setup.exe` from the repository's **Releases** page.
+1. Download the newest `Milestash-vX.Y.Z-Setup.exe` from the repository's **Releases** page.
 2. Open it. The first time only: Setup isn't signed with a paid code-signing certificate, so
    Windows says "Windows protected your PC". Click **More info**, then **Run anyway**.
-3. Setup installs Award Wallet for you alone, with no administrator password, adds it to the
+3. Setup installs Milestash for you alone, with no administrator password, adds it to the
    Start menu and opens it. Tick **Create a desktop shortcut** in Setup if you want one.
 
-If Windows says **Smart App Control** blocked Setup, that PC only runs signed apps, and Award
-Wallet isn't signed: it can't be installed there unless Smart App Control is turned off in
+If Windows says **Smart App Control** blocked Setup, that PC only runs signed apps, and
+Milestash isn't signed: it can't be installed there unless Smart App Control is turned off in
 **Windows Security → App & browser control**.
 
 ### Build it yourself
@@ -106,15 +110,15 @@ No programming needed: you paste a few lines into PowerShell and wait a few minu
 5. **Build the app.** Paste these lines and press Enter:
 
    ```powershell
-   Expand-Archive ~\Downloads\award-wallet-main.zip ~\Downloads -Force
-   cd ~\Downloads\award-wallet-main
+   Expand-Archive ~\Downloads\milestash-main.zip ~\Downloads -Force
+   cd ~\Downloads\milestash-main
    powershell -ExecutionPolicy Bypass -File build_windows.ps1
    ```
 
    The build downloads what it needs, runs the app's tests, packs the app and checks that it
-   starts. It ends with `Done: build\Award-Wallet-Setup.exe`.
-6. **Install it.** Run `build\Award-Wallet-Setup.exe` (type `start build\Award-Wallet-Setup.exe`
-   and press Enter). The `award-wallet-main` folder and the .zip can go to the Recycle Bin.
+   starts. It ends with `Done: build\Milestash-Setup.exe`.
+6. **Install it.** Run `build\Milestash-Setup.exe` (type `start build\Milestash-Setup.exe`
+   and press Enter). The `milestash-main` folder and the .zip can go to the Recycle Bin.
 
 If it stops with **"uv is missing"** or **"Inno Setup is missing"**, do step 3 or 4 again, then
 close PowerShell, open it again and repeat step 5 from its `cd` line. If it stops at **"Running
@@ -131,7 +135,7 @@ tests"**, copy what PowerShell shows into a new issue on the repository's **Issu
   login one key at a time, like a person.
 - **Needs your sign-in** means a site wants something only you can give, like a code by text,
   usually only the first time. Click **Sign in** on the program, even while others refresh: the
-  site's page shows right in Award Wallet, with a note saying what the site wants. The app types
+  site's page shows right in Milestash, with a note saying what the site wants. The app types
   your saved login; you click and type on the page like in a browser to finish, like entering the
   code. It's the same hidden Chrome that does the refreshes, so the site gets to know that browser,
   and from then on refreshes run out of sight again. **Stop** ends the sign-in; nothing else
@@ -177,7 +181,7 @@ What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 The app checks for a new version each time it opens and shows a banner when there is one. Click
 **Update now**: a progress bar follows the download, then the app closes, replaces itself and
-reopens on its own. Your programs and logins are kept. **Help → About Award Wallet** shows your
+reopens on its own. Your programs and logins are kept. **Help → About Milestash** shows your
 version and checks again. If an update ever goes wrong, `install.log` in Diagnostics says what
 happened.
 
@@ -189,25 +193,33 @@ On a Mac, the app replaces itself in your Applications folder. Opened from anywh
 .dmg, or Downloads), it shows **Move to Applications**, which puts it there and reopens it from
 there. Then eject the .dmg or delete the other copy, so you don't open an old one by mistake.
 
-If macOS says Award Wallet "was prevented from modifying apps on your Mac" while it updates, close
-the notice and leave Award Wallet switched off under **System Settings → Privacy & Security → App
+Updating from Award Wallet, the app's old name, it reopens twice: the second time it's called
+Milestash in Applications, the Dock and Launchpad too. If Award Wallet can't find the update, it
+missed it before the repository was renamed: download the newest `.dmg` from **Releases**, drag
+**Milestash** onto **Applications** and drag **Award Wallet** to the Trash. Your data moves over
+either way.
+
+If macOS says Milestash "was prevented from modifying apps on your Mac" while it updates, close
+the notice and leave Milestash switched off under **System Settings → Privacy & Security → App
 Management**. The update installs anyway, and switching it on would let the app change or delete
 any app on your Mac.
 
 ## Your data
 
-Everything lives in one folder: `~/Library/Application Support/Award Wallet` on a Mac, and
-`%LOCALAPPDATA%\Award Wallet` on Windows (paste that into File Explorer's address bar to open it).
+Everything lives in one folder: `~/Library/Application Support/Milestash` on a Mac, and
+`%LOCALAPPDATA%\Milestash` on Windows (paste that into File Explorer's address bar to open it).
+Award Wallet kept it in `~/Library/Application Support/Award Wallet`: Milestash renames that
+folder the first time it opens, and keeps reading the keys Award Wallet saved.
 
 | | What it holds |
 | --- | --- |
 | `settings.env` | Your encryption keys. Back it up: without it, saved logins can't be decrypted. |
-| `award_wallet.db` | Your programs and balance history. |
+| `milestash.db` | Your programs and balance history. |
 | `Browser/` | Each program's Chrome profile: the site's cookies, which keep it signed in and remember this computer. Deleting one makes that site ask for a security code again. |
 | `Diagnostics/` | A log of what the app did and screenshots of pages where a fetch failed. Safe to send when something needs fixing: the screenshots black out every box, so nothing typed shows (cover account numbers the page itself shows). **Help → Show Diagnostics in Finder** (**in File Explorer** on Windows) opens it. |
 
 To uninstall on a Mac, drag the app to the Trash. On Windows, go to **Settings → Apps → Installed
-apps**, click the **⋯** next to Award Wallet and choose **Uninstall**. Either way your data stays;
+apps**, click the **⋯** next to Milestash and choose **Uninstall**. Either way your data stays;
 to remove it too, delete that folder.
 
 **Security.**
@@ -238,7 +250,7 @@ Setup.exe. The same code runs on both; what differs is asked in `system.py`, and
 specifics are in `windows.py`.
 
 ```
-src/award_wallet/
+src/milestash/
   desktop.py     the app: window, menus, data folder, log file, the build's self-test
   system.py      which computer it runs on, and what it calls things (Finder or File Explorer)
   windows.py     Windows only: one copy at a time, the screen, Chrome's version
@@ -251,14 +263,14 @@ src/award_wallet/
   models.py      tables: loyalty accounts, balance snapshots, expiration lots
   migrations/    database schema versions
   security/      the encryption vault
-packaging/       app icons, the PyInstaller entry point, and windows/award_wallet.iss (the installer)
+packaging/       app icons, the PyInstaller entry point, and windows/milestash.iss (the installer)
 build_dmg.sh     builds the Mac app; build_windows.ps1 builds the Windows app and Setup.exe
 tests/           pytest suite, including fakebank.py, a pretend bank to test signing in
 ```
 
 ### Adding a program
 
-Create a module in `src/award_wallet/providers/`, subclass `Provider`, decorate it with
+Create a module in `src/milestash/providers/`, subclass `Provider`, decorate it with
 `@register`, and import it in `providers/__init__.py`. Set `balance_url` (the page that shows the
 balance once signed in), then either `balance_labels` (the words shown with the balance, like
 "Ultimate Rewards points": the reader takes the number in the same box) or `balance_patterns`
@@ -287,7 +299,7 @@ You need [uv](https://docs.astral.sh/uv/): `curl -LsSf https://astral.sh/uv/inst
 | `make app` | Run the app from the current branch's code, with your real data, without installing it |
 | `make test` / `make lint` / `make format` | Tests, style checks, style fixes |
 | `make check` | Lint and tests, the same as CI |
-| `make dmg` | Build `build/Award Wallet.dmg` locally |
+| `make dmg` | Build `build/Milestash.dmg` locally |
 
 After editing `models.py`, add a migration (it uses a scratch database, never your data):
 
@@ -299,30 +311,32 @@ uv run alembic revision --autogenerate -m "describe the change"
 `tests/test_migrations.py` fails if `models.py` changes without a matching migration.
 
 On Windows there's no `make`: `uv sync --extra desktop` installs everything,
-`uv run python -m award_wallet.desktop` runs the app from the code, `uv run pytest` runs the
+`uv run python -m milestash.desktop` runs the app from the code, `uv run pytest` runs the
 tests, and `powershell -ExecutionPolicy Bypass -File build_windows.ps1` builds
-`build\Award-Wallet-Setup.exe`. Every build checks that the packed app starts: it runs it with
+`build\Milestash-Setup.exe`. Every build checks that the packed app starts: it runs it with
 `--self-test`, which serves the pages from a new, empty data folder and starts the hidden Chrome,
 never touching your data.
 
 Some tests need a browser: the ones that sign in to a pretend bank, read balances off pages, or
 run the app's own scripts, like the expiration countdown and renaming a program. CI installs
-Chromium for them and sets `AW_REQUIRE_BROWSER`, so a missing browser fails the run instead of
-skipping them. On your computer they're skipped unless `AW_BROWSER_PATH` names a Chrome or Chromium to
-use. `tests/test_windows.py` asks Windows itself, so most of it runs only on Windows.
+Chromium for them and sets `MILESTASH_REQUIRE_BROWSER`, so a missing browser fails the run
+instead of skipping them. On your computer they're skipped unless `MILESTASH_BROWSER_PATH` names a
+Chrome or Chromium to use. `tests/test_windows.py` asks Windows itself, so most of it runs only on
+Windows.
 
 ### Branches and releases
 
 - `main` is what the installed app updates from, so every change goes on its own branch with a
   pull request. CI runs lint and every test on it, the browser ones included, which takes about
-  10 minutes. It also runs every test on Windows with Google Chrome, then builds Setup.exe and
-  keeps it with the run for 30 days: on the pull request, open the **windows** check's details,
-  then **Summary → Artifacts → Award-Wallet-Setup** (a .zip with Setup.exe inside) to try it
-  before merging.
+  10 minutes. It also runs every test on Windows with Google Chrome, then builds Setup.exe (even
+  when a test failed, so one run shows every problem) and, when everything passed, keeps it with
+  the run for 30 days: on the pull request, open the **windows** check's details, then
+  **Summary → Artifacts → Milestash-Setup** (a .zip with Setup.exe inside) to try it before
+  merging.
 - To try a branch before merging: `git fetch && git switch <branch> && make app`.
   `git switch main` goes back.
 - Each pull request that changes the app bumps the version in `pyproject.toml` and
-  `src/award_wallet/__init__.py` (a test checks they match), runs `uv lock` so `uv.lock` has the
+  `src/milestash/__init__.py` (a test checks they match), runs `uv lock` so `uv.lock` has the
   new version too (CI fails otherwise), and adds a `CHANGELOG.md` entry.
 - Every pull request also updates this README when it changes anything the README describes.
 - Merging into `main` with a new version publishes it: the release workflow builds the .dmg on a
@@ -330,6 +344,11 @@ use. `tests/test_windows.py` asks Windows itself, so most of it runs only on Win
   both to one GitHub release, and the installed apps offer it. If either build fails, nothing is
   released until it's fixed or the run's **Re-run failed jobs** succeeds. Merging without a
   version bump releases nothing.
+- The repository was called `award-wallet`, like the app. Award Wallet 0.13 and older only
+  install updates from that address, so it was renamed once the installed app had updated to
+  Milestash; GitHub sends the old address to the new one. Keys named `AW_*` in `settings.env`
+  still work, and the installed app moves Award Wallet's data and itself to the new name
+  (`desktop.move_old_data`, `updates.start_rename`). `make app` uses the data where it is.
 - When pull requests build on each other, merge them in order with **Create a merge commit**.
   Squashing makes each later one conflict on the version number. Merged in a row, a version in
   between may get no release of its own, because a release run still waiting when a newer merge

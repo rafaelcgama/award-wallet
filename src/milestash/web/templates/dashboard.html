@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% from "_macros.html" import expiry_alert, expiry_line, rewards_link, status_pill %}
+{% block head %}{% if busy %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block content %}
+{% if available_update %}
+<div class="banner" role="status">
+  <span>Milestash {{ available_update.version }} is available.</span>
+  {% if can_install %}
+  <form method="post" action="/update" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="button" data-busy="Starting…">Update now</button>
+  </form>
+  {% else %}
+  <a class="button" href="/about?check=1">How to update</a>
+  {% endif %}
+</div>
+{% elif runs_from %}
+<div class="banner" role="status">
+  <span>Milestash is running from {{ runs_from }}, not your Applications folder.</span>
+  <form method="post" action="/move-to-applications" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="button" data-busy="Moving…">Move to Applications</button>
+  </form>
+</div>
+{% endif %}
+<div class="page-header">
+  <div>
+    <h1>Your points</h1>
+    <p class="muted">
+      {% if busy %}Refreshing your balances…{% else %}{{ summaries|length }} program{{ "" if summaries|length == 1 else "s" }} linked{% endif %}
+    </p>
+  </div>
+  <div class="header-actions">
+    {% if can_refresh %}
+    <form method="post" action="/refresh" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button button-secondary" data-busy="Refreshing…"{% if busy %} disabled{% endif %}>{% if busy %}Refreshing…{% else %}Refresh now{% endif %}</button>
+    </form>
+    {% endif %}
+    <a class="button" href="/accounts/new">Link a program</a>
+  </div>
+</div>
+
+{% if not summaries %}
+<section class="card empty">
+  <h2>Nothing here yet</h2>
+  <p class="muted">Link {{ program_names }} to see your balances side by side.</p>
+  <a class="button" href="/accounts/new">Link your first program</a>
+</section>
+{% else %}
+<section class="grid">
+  {% for s in summaries %}
+  <div class="card program-card">
+    <div class="card-top">
+      <div>
+        <div class="eyebrow">{{ s.provider.name }}</div>
+        <a class="program stretched-link" href="/accounts/{{ s.account.id }}">{{ s.account.label }}</a>
+      </div>
+      {{ status_pill(s.account, s.provider, busy, auto_fetch, needs_you) }}
+    </div>
+    {% if s.latest %}
+    <div class="balance">{{ s.latest.balance|number }} <span class="unit">{{ s.latest.unit }}</span></div>
+    <div class="meta">Updated {{ s.checked_at|time_ago }}</div>
+    {% else %}
+    <div class="balance balance-empty">No balance yet</div>
+    {% endif %}
+    <div class="link-row">{{ rewards_link(s.provider) }}</div>
+    {% if s.account.id in needs_you %}
+    <div class="meta meta-warn">Waiting for you to finish signing in.</div>
+    <div class="card-action"><a class="button button-small" href="/accounts/{{ s.account.id }}/sign-in?back=dashboard">Continue signing in</a></div>
+    {% elif s.account.id not in busy and s.account.held_balance is not none %}
+    <div class="meta meta-warn">The last refresh read {{ s.account.held_balance|number }}. Is that right?</div>
+    <div class="card-action"><a class="button button-small" href="/accounts/{{ s.account.id }}">Check it</a></div>
+    {% elif s.account.id not in busy and s.account.sync_message %}
+    <div class="meta meta-warn">{{ s.account.sync_message }}</div>
+    {% if s.account.sync_status in ("needs_login", "login_rejected") and auto_fetch and s.provider.supports_fetch and s.account.credentials_encrypted %}
+    <form method="post" action="/accounts/{{ s.account.id }}/sign-in" class="card-action">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="back" value="dashboard">
+      <button type="submit" class="button button-small" data-busy="Opening…">Sign in</button>
+    </form>
+    {% endif %}
+    {% elif not s.latest %}
+    <div class="meta">Open it to {{ "sign in" if auto_fetch and s.provider.supports_fetch and s.account.credentials_encrypted else "enter a balance" }}</div>
+    {% endif %}
+    {% set lot = s.next_expiration %}
+    {% if lot and s.expires_soon %}
+    {{ expiry_alert(lot, s.latest.unit, s.provider.keep_alive_hint) }}
+    {% elif lot %}
+    <div class="expiry">{{ expiry_line(lot, s.latest.unit, s.provider) }}</div>
+    {% else %}
+    <div class="expiry">{{ s.provider.expiration_policy }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

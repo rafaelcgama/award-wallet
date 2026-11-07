@@ -62,11 +62,11 @@ jobs:
       - name: Name it for the release
         env:
           TAG: ${{ needs.version.outputs.tag }}
-        run: mv "build/Award Wallet.dmg" "build/Award-Wallet-$TAG.dmg"
+        run: mv "build/Milestash.dmg" "build/Milestash-$TAG.dmg"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dmg
-          path: build/Award-Wallet-${{ needs.version.outputs.tag }}.dmg
+          path: build/Milestash-${{ needs.version.outputs.tag }}.dmg
           if-no-files-found: error
           retention-days: 7
 
@@ -85,11 +85,11 @@ jobs:
       - name: Name it for the release
         env:
           TAG: ${{ needs.version.outputs.tag }}
-        run: Move-Item -LiteralPath build/Award-Wallet-Setup.exe -Destination "build/Award-Wallet-$env:TAG-Setup.exe"
+        run: Move-Item -LiteralPath build/Milestash-Setup.exe -Destination "build/Milestash-$env:TAG-Setup.exe"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows
-          path: build/Award-Wallet-${{ needs.version.outputs.tag }}-Setup.exe
+          path: build/Milestash-${{ needs.version.outputs.tag }}-Setup.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -111,4 +111,4 @@ jobs:
           TAG: ${{ needs.version.outputs.tag }}
         run: |
           gh release create "$TAG" release/* --target "$GITHUB_SHA" \
-            --title "Award Wallet $TAG" --generate-notes
+            --title "Milestash $TAG" --generate-notes

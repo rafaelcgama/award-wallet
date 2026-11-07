@@ -29,12 +29,12 @@ jobs:
           uv run ruff format --check .
       - name: Install Chromium for the browser tests
         # The tests that sign in to a pretend bank and read balances off pages need a real browser.
-        # Without one they'd be skipped, so AW_REQUIRE_BROWSER makes a missing browser an error.
+        # Without one they'd be skipped, so MILESTASH_REQUIRE_BROWSER makes a missing browser an error.
         run: |
           uv run playwright install --with-deps chromium
           path="$(uv run python -c 'from playwright.sync_api import sync_playwright; p = sync_playwright().start(); print(p.chromium.executable_path); p.stop()')"
-          echo "AW_BROWSER_PATH=$path" >> "$GITHUB_ENV"
-          echo "AW_REQUIRE_BROWSER=1" >> "$GITHUB_ENV"
+          echo "MILESTASH_BROWSER_PATH=$path" >> "$GITHUB_ENV"
+          echo "MILESTASH_REQUIRE_BROWSER=1" >> "$GITHUB_ENV"
       - name: Test
         run: uv run pytest
 
@@ -57,17 +57,20 @@ jobs:
             ForEach-Object { Join-Path $_ "Google\Chrome\Application\chrome.exe" } |
             Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
           if (-not $chrome) { throw "Google Chrome isn't installed on this runner." }
-          "AW_BROWSER_PATH=$chrome" >> $env:GITHUB_ENV
-          "AW_REQUIRE_BROWSER=1" >> $env:GITHUB_ENV
+          "MILESTASH_BROWSER_PATH=$chrome" >> $env:GITHUB_ENV
+          "MILESTASH_REQUIRE_BROWSER=1" >> $env:GITHUB_ENV
       - name: Test
         run: uv run pytest
       - name: Build the app and Setup.exe
+        # Even when a test failed, so one run shows every problem; Setup.exe is only kept when
+        # everything passed.
+        if: ${{ !cancelled() }}
         env:
           SKIP_TESTS: "1"
         run: ./build_windows.ps1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: Award-Wallet-Setup
-          path: build/Award-Wallet-Setup.exe
+          name: Milestash-Setup
+          path: build/Milestash-Setup.exe
           if-no-files-found: error
           retention-days: 30

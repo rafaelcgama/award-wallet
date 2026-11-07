@@ -1,4 +1,7 @@
+import contextlib
 import re
+import shutil
+import sqlite3
 import stat
 import sys
 from pathlib import Path
@@ -6,8 +9,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from award_wallet.desktop import desktop_settings
-from award_wallet.web import create_app
+from milestash.desktop import desktop_settings
+from milestash.web import create_app
 
 from conftest import csrf_token, link, post_form
 
@@ -56,10 +59,10 @@ def test_the_launch_token_comes_out_of_the_address(tmp_path):
 def test_a_session_from_an_earlier_launch_opens_nothing(tmp_path):
     with TestClient(create_app(desktop_settings(tmp_path, "token-1")), base_url="http://127.0.0.1") as window:
         window.get("/?token=token-1")
-        cookie = window.cookies.get("award_wallet_session")
+        cookie = window.cookies.get("milestash_session")
         assert cookie and window.get("/").status_code == 200
     with TestClient(create_app(desktop_settings(tmp_path, "token-2")), base_url="http://127.0.0.1") as later:
-        assert later.get("/", headers={"Cookie": f"award_wallet_session={cookie}"}).status_code == 403
+        assert later.get("/", headers={"Cookie": f"milestash_session={cookie}"}).status_code == 403
 
 
 def test_pages_lock_themselves_to_the_window(tmp_path):
@@ -100,7 +103,7 @@ def test_other_websites_cannot_send_the_window_anything(tmp_path):
 
 def test_pages_run_only_the_apps_own_scripts():
     # Their content security policy blocks code written into a page, so none may creep back in.
-    templates = Path(__file__).parents[1] / "src" / "award_wallet" / "web" / "templates"
+    templates = Path(__file__).parents[1] / "src" / "milestash" / "web" / "templates"
     for template in templates.glob("*.html"):
         text = template.read_text(encoding="utf-8")
         assert not re.search(r"<script(?![^>]*\bsrc=)", text), template.name
@@ -132,14 +135,14 @@ def test_programs_carry_over_between_launches(tmp_path):
 def test_log_file_is_kept_in_the_diagnostics_folder(tmp_path):
     import logging
 
-    from award_wallet.desktop import start_logging
+    from milestash.desktop import start_logging
 
     folder = start_logging(tmp_path)
     try:
-        logging.getLogger("award_wallet.test").info("hello from the test")
+        logging.getLogger("milestash.test").info("hello from the test")
         for handler in logging.getLogger().handlers:
             handler.flush()
-        assert "hello from the test" in (folder / "award-wallet.log").read_text(encoding="utf-8")
+        assert "hello from the test" in (folder / "milestash.log").read_text(encoding="utf-8")
         assert folder.name == "Diagnostics"
     finally:
         root = logging.getLogger()
@@ -150,7 +153,7 @@ def test_log_file_is_kept_in_the_diagnostics_folder(tmp_path):
 
 
 def test_check_browser_starts_chrome_and_says_so(monkeypatch, capsys):
-    from award_wallet import desktop, fetching
+    from milestash import desktop, fetching
 
     started = []
 
@@ -179,20 +182,160 @@ def test_check_browser_starts_chrome_and_says_so(monkeypatch, capsys):
 
 
 def test_each_computer_keeps_the_data_where_its_apps_keep_theirs(monkeypatch, tmp_path):
-    from award_wallet import desktop, system
+    from milestash import desktop, system
 
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setattr(system, "on_mac", lambda: False)
     monkeypatch.setattr(system, "on_windows", lambda: True)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
-    assert desktop.data_dir() == tmp_path / "AppData" / "Local" / "Award Wallet"
+    assert desktop.data_dir() == tmp_path / "AppData" / "Local" / "Milestash"
     monkeypatch.setattr(system, "on_windows", lambda: False)
     monkeypatch.setattr(system, "on_mac", lambda: True)
-    assert desktop.data_dir() == Path.home() / "Library" / "Application Support" / "Award Wallet"
+    assert desktop.data_dir() == tmp_path / "Library" / "Application Support" / "Milestash"
+
+
+# Milestash was called Award Wallet until 0.14.0 -------------------------------------------------
+
+
+# Award Wallet only ever ran on a Mac (and Windows won't rename files a test still has open).
+award_wallet_mac = pytest.mark.skipif(sys.platform == "win32", reason="Award Wallet was a Mac app")
+
+
+@pytest.fixture
+def mac_home(monkeypatch, tmp_path):
+    """A Mac's Application Support folder, in a home of the test's own."""
+    from milestash import system
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    monkeypatch.setattr(system, "on_windows", lambda: False)
+    monkeypatch.setattr(system, "on_mac", lambda: True)
+    return tmp_path / "home" / "Library" / "Application Support"
+
+
+def _award_wallet_folder(folder: Path):
+    """A data folder the way Award Wallet left it, with United linked: its keys named AW_*, its
+    database and log, and United's Chrome profile."""
+    settings = desktop_settings(folder, "token-1")
+    with TestClient(create_app(settings), base_url="http://127.0.0.1") as window:
+        window.get("/?token=token-1")
+        account_id = link(window, "united")
+    keys = folder / "settings.env"
+    keys.write_text(keys.read_text().replace("MILESTASH_", "AW_").replace("Milestash", "Award Wallet"))
+    for path in folder.glob("milestash.db*"):
+        path.rename(folder / path.name.replace("milestash", "award_wallet"))
+    (folder / "Diagnostics").mkdir()
+    (folder / "Diagnostics" / "award-wallet.log").write_text("Award Wallet 0.13.0 starting\n")
+    (folder / "Browser" / account_id).mkdir(parents=True)
+    (folder / "Browser" / account_id / "Cookies").write_text("signed in")
+    return settings, account_id
+
+
+@award_wallet_mac
+def test_an_update_from_award_wallet_carries_everything_over(mac_home):
+    from milestash import desktop
+
+    old = mac_home / "Award Wallet"
+    before, account_id = _award_wallet_folder(old)
+    # Until it has the new name, the app keeps using the old folder, so nothing goes missing.
+    assert desktop.data_dir() == old
+    desktop.move_old_data()
+    folder = mac_home / "Milestash"
+    assert desktop.data_dir() == folder and not old.exists()
+    contents = ["Browser", "Diagnostics", "milestash.db", "settings.env"]
+    assert sorted(path.name for path in folder.iterdir()) == contents
+    assert (folder / "Diagnostics" / "milestash.log").read_text() == "Award Wallet 0.13.0 starting\n"
+    assert (folder / "Browser" / account_id / "Cookies").read_text() == "signed in"
+    # The keys Award Wallet wrote still open the saved logins.
+    after = desktop_settings(desktop.data_dir(), "token-2")
+    assert (after.secret_key, after.encryption_keys) == (before.secret_key, before.encryption_keys)
+    assert after.database_url.endswith("/Milestash/milestash.db")
+    with TestClient(create_app(after), base_url="http://127.0.0.1") as window:
+        window.get("/?token=token-2")
+        assert window.get(f"/accounts/{account_id}").status_code == 200
+    # It only happens once.
+    desktop.move_old_data()
+    assert sorted(path.name for path in folder.iterdir()) == contents
+
+
+@award_wallet_mac
+def test_award_wallet_data_that_cant_be_renamed_is_used_where_it_is(mac_home, monkeypatch):
+    from milestash import desktop
+
+    old = mac_home / "Award Wallet"
+    before, account_id = _award_wallet_folder(old)
+
+    def refuse(path, target):
+        raise PermissionError(target)
+
+    monkeypatch.setattr(Path, "rename", refuse)
+    desktop.move_old_data()
+    assert desktop.data_dir() == old
+    after = desktop_settings(desktop.data_dir(), "token-2")
+    assert after.database_url.endswith("/Award Wallet/award_wallet.db")
+    assert after.encryption_keys == before.encryption_keys
+
+
+def test_a_new_computer_starts_with_the_new_name(mac_home):
+    from milestash import desktop
+
+    desktop.move_old_data()
+    assert desktop.data_dir() == mac_home / "Milestash" and not mac_home.exists()
+
+
+def test_the_database_keeps_what_only_its_journal_held(tmp_path):
+    from milestash import desktop
+
+    folder = tmp_path / "Award Wallet"
+    folder.mkdir()
+    writer = sqlite3.connect(folder / "award_wallet.db")
+    writer.execute("PRAGMA journal_mode=WAL")
+    writer.execute("PRAGMA wal_autocheckpoint=0")
+    writer.execute("CREATE TABLE balance (miles INTEGER)")
+    writer.execute("INSERT INTO balance VALUES (120000)")
+    writer.commit()
+    # As the app leaves it if it stops before folding its journal in: the balance is only there.
+    left = tmp_path / "left"
+    shutil.copytree(folder, left)
+    writer.close()
+    assert (left / "award_wallet.db-wal").exists()
+    desktop._rename_database(left)
+    assert "milestash.db" in [path.name for path in left.iterdir()]
+    assert not [path.name for path in left.iterdir() if path.name.startswith("award_wallet.db")]
+    with contextlib.closing(sqlite3.connect(left / "milestash.db")) as reader:
+        assert reader.execute("SELECT miles FROM balance").fetchall() == [(120000,)]
+
+
+def test_the_mac_app_tries_to_take_its_new_name_once(monkeypatch, tmp_path):
+    from milestash import desktop, updates
+
+    app = tmp_path / "Applications" / "Award Wallet.app"
+    renamed = []
+    monkeypatch.setattr(updates, "app_to_rename", lambda: app)
+    monkeypatch.setattr(updates, "start_rename", renamed.append)
+    assert desktop.rename_old_app(tmp_path / "data")
+    assert renamed == [app]
+    # If it didn't work, it opens under the old name from then on.
+    assert not desktop.rename_old_app(tmp_path / "data")
+    assert renamed == [app]
+    monkeypatch.setattr(updates, "app_to_rename", lambda: None)
+    assert not desktop.rename_old_app(tmp_path / "other")
+
+
+def test_the_server_starts_without_a_console(monkeypatch, tmp_path):
+    # A Windows app has no console: Python gives it no stdout or stderr.
+    from milestash import desktop
+
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    server, thread, url = desktop.start_server(desktop_settings(tmp_path, "token"))
+    server.should_exit = True
+    thread.join(timeout=5)
+    assert url.startswith("http://127.0.0.1:")
 
 
 def test_the_database_address_works_with_windows_folders(tmp_path):
-    settings = desktop_settings(tmp_path / "Award Wallet", "launch-token")
-    assert settings.database_url == f"sqlite:///{(tmp_path / 'Award Wallet' / 'award_wallet.db').as_posix()}"
+    settings = desktop_settings(tmp_path / "Milestash", "launch-token")
+    assert settings.database_url == f"sqlite:///{(tmp_path / 'Milestash' / 'milestash.db').as_posix()}"
     assert "\\" not in settings.database_url
 
 
@@ -202,18 +345,18 @@ def test_the_database_address_works_with_windows_folders(tmp_path):
 )
 def test_help_is_where_each_computer_keeps_it(monkeypatch, on_windows, menus, diagnostics):
     # On Windows, the Help menu is at the top of the window; on a Mac, in the menu bar, with Check
-    # for Updates in the Award Wallet menu too.
+    # for Updates in the Milestash menu too.
     pytest.importorskip("webview.menu")
-    from award_wallet import desktop, system
+    from milestash import desktop, system
 
     monkeypatch.setattr(system, "on_windows", lambda: on_windows)
     shown = desktop.app_menus(window=None, base_url="http://127.0.0.1:1")
     assert [menu.title for menu in shown] == menus
-    assert [item.title for item in shown[-1].items] == ["About Award Wallet", "Check for Updates…", diagnostics]
+    assert [item.title for item in shown[-1].items] == ["About Milestash", "Check for Updates…", diagnostics]
 
 
 def test_opening_the_app_again_on_windows_shows_the_open_one(monkeypatch):
-    from award_wallet import desktop, system, windows
+    from milestash import desktop, system, windows
 
     shown = []
     monkeypatch.setattr(system, "on_windows", lambda: True)
@@ -221,11 +364,11 @@ def test_opening_the_app_again_on_windows_shows_the_open_one(monkeypatch):
     monkeypatch.setattr(windows, "show_running_copy", shown.append)
     monkeypatch.setattr(desktop, "start_server", lambda settings: pytest.fail("a second copy started"))
     desktop.main([])
-    assert shown == ["Award Wallet"]
+    assert shown == ["Milestash"]
 
 
 def test_without_webview2_windows_says_what_to_get(monkeypatch):
-    from award_wallet import desktop, system, windows
+    from milestash import desktop, system, windows
 
     problems = []
     monkeypatch.setattr(system, "on_windows", lambda: True)
@@ -234,7 +377,7 @@ def test_without_webview2_windows_says_what_to_get(monkeypatch):
     monkeypatch.setattr(desktop, "_show_problem", lambda heading, text: problems.append(heading))
     monkeypatch.setattr(desktop, "start_server", lambda settings: pytest.fail("the app started"))
     desktop.main([])
-    assert problems == ["Award Wallet needs Microsoft Edge WebView2"]
+    assert problems == ["Milestash needs Microsoft Edge WebView2"]
 
 
 class _Chrome:
@@ -265,7 +408,7 @@ class _Chrome:
 
 
 def test_the_self_test_checks_a_build_without_your_data(monkeypatch, tmp_path):
-    from award_wallet import desktop, fetching, system
+    from milestash import desktop, fetching, system
 
     started = []
     monkeypatch.setattr(fetching, "browser_launcher", _Chrome(started))
@@ -278,7 +421,7 @@ def test_the_self_test_checks_a_build_without_your_data(monkeypatch, tmp_path):
 
 
 def test_a_self_test_that_fails_says_why_and_never_raises(monkeypatch, tmp_path):
-    from award_wallet import desktop, fetching
+    from milestash import desktop, fetching
 
     def no_chrome(profile):
         raise fetching.ChromeMissing("Google Chrome isn't installed")

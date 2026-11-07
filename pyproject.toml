@@ -1,5 +1,5 @@
 [project]
-name = "award-wallet"
+name = "milestash"
 version = "0.14.0"
 description = "One dashboard for all your airline miles and loyalty points."
 readme = "README.md"
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-award-wallet = "award_wallet.desktop:main"
+milestash = "milestash.desktop:main"
 
 [project.optional-dependencies]
 desktop = [

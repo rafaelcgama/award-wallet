@@ -1,4 +1,4 @@
-# Builds the Windows app and its installer, build\Award-Wallet-Setup.exe. GitHub runs this for each
+# Builds the Windows app and its installer, build\Milestash-Setup.exe. GitHub runs this for each
 # pull request and release; to build one yourself on a Windows PC, run this in PowerShell from this
 # folder (the README's "Build it yourself" walks through it):
 #   powershell -ExecutionPolicy Bypass -File build_windows.ps1
@@ -7,7 +7,7 @@
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
 
-$AppName = "Award Wallet"
+$AppName = "Milestash"
 $Version = (Select-String -LiteralPath pyproject.toml -Pattern '^version = "(.*)"').Matches[0].Groups[1].Value
 
 # Runs a program and stops the build when it fails, which PowerShell doesn't do by itself.
@@ -47,12 +47,12 @@ Invoke-Program uv @(
     "run", "pyinstaller", "--noconfirm", "--clean", "--windowed",
     "--name", $AppName,
     "--icon", "$PWD\packaging\AppIcon.ico",
-    "--collect-data", "award_wallet",
-    "--add-data", "$PWD\src\award_wallet\migrations;award_wallet\migrations",
-    "--collect-submodules", "award_wallet",
+    "--collect-data", "milestash",
+    "--add-data", "$PWD\src\milestash\migrations;milestash\migrations",
+    "--collect-submodules", "milestash",
     "--collect-submodules", "uvicorn",
     "--distpath", "build\dist", "--workpath", "build\work", "--specpath", "build",
-    "packaging\award_wallet_app.py"
+    "packaging\milestash_app.py"
 )
 
 Write-Host "==> Checking that the app starts"
@@ -75,7 +75,7 @@ if (-not $Result.StartsWith("ok")) {
     throw "The app's self-test failed."
 }
 
-Write-Host "==> Packing Award-Wallet-Setup.exe"
+Write-Host "==> Packing Milestash-Setup.exe"
 function Find-InnoSetup {
     $Command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
     if ($Command) {
@@ -98,7 +98,7 @@ if (-not $Iscc) {
     Write-Host "  winget install --exact --id JRSoftware.InnoSetup"
     exit 1
 }
-Invoke-Program $Iscc @("/DAppVersion=$Version", "packaging\windows\award_wallet.iss")
+Invoke-Program $Iscc @("/DAppVersion=$Version", "packaging\windows\milestash.iss")
 
 Write-Host ""
-Write-Host "Done: build\Award-Wallet-Setup.exe"
+Write-Host "Done: build\Milestash-Setup.exe"

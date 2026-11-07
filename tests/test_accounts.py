@@ -3,9 +3,9 @@ from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
 
-from award_wallet.models import BalanceSnapshot, BalanceSource, ExpirationLot, LoyaltyAccount
-from award_wallet.providers import Expiration, all_providers
-from award_wallet.services import accounts, balances
+from milestash.models import BalanceSnapshot, BalanceSource, ExpirationLot, LoyaltyAccount
+from milestash.providers import Expiration, all_providers
+from milestash.services import accounts, balances
 
 from conftest import link, post_form
 
@@ -257,7 +257,7 @@ def test_american_airlines_can_be_linked(client):
 
 
 def test_american_airlines_reads_award_miles_not_loyalty_points():
-    from award_wallet.providers import get_provider
+    from milestash.providers import get_provider
 
     american = get_provider("american")
     assert american.supports_fetch and american.unit == "miles"
@@ -274,7 +274,7 @@ def test_american_express_can_be_linked(client):
 
 
 def test_american_express_reads_membership_rewards_points():
-    from award_wallet.providers import get_provider
+    from milestash.providers import get_provider
 
     amex = get_provider("amex")
     assert amex.supports_fetch and amex.unit == "points"
@@ -291,7 +291,7 @@ def test_delta_can_be_linked(client):
 
 
 def test_delta_reads_the_miles_you_can_spend():
-    from award_wallet.providers import get_provider
+    from milestash.providers import get_provider
 
     delta = get_provider("delta")
     assert delta.supports_fetch and delta.unit == "miles"

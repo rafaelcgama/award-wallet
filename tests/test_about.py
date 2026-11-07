@@ -14,8 +14,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from award_wallet import __version__, system, updates
-from award_wallet.web import create_app
+from milestash import __version__, system, updates
+from milestash.web import create_app
 
 # The Mac app's installer is a shell script that works with Mac paths like /Applications: its tests
 # run on Macs and Linux, not on Windows, which has its own installer (see the _Windows tests).
@@ -84,10 +84,10 @@ def _fake_github(monkeypatch, payload=None, error=None):
     monkeypatch.setattr(updates, "_open", answer)
 
 
-RELEASES = "https://github.com/rafaelcgama/award-wallet/releases"
-DMG = f"{RELEASES}/download/v99.0.0/Award-Wallet-v99.0.0.dmg"
+RELEASES = "https://github.com/rafaelcgama/milestash/releases"
+DMG = f"{RELEASES}/download/v99.0.0/Milestash-v99.0.0.dmg"
 DMG_SHA256 = hashlib.sha256(b"dmg").hexdigest()
-SETUP = f"{RELEASES}/download/v99.0.0/Award-Wallet-v99.0.0-Setup.exe"
+SETUP = f"{RELEASES}/download/v99.0.0/Milestash-v99.0.0-Setup.exe"
 SETUP_SHA256 = hashlib.sha256(b"setup").hexdigest()
 # The download for the computer the tests run on.
 DOWNLOAD, DOWNLOAD_SHA256 = (SETUP, SETUP_SHA256) if sys.platform == "win32" else (DMG, DMG_SHA256)
@@ -96,8 +96,8 @@ DOWNLOAD, DOWNLOAD_SHA256 = (SETUP, SETUP_SHA256) if sys.platform == "win32" els
 def _release_payload(**changes) -> dict:
     """A release as GitHub lists it, with the Mac and the Windows app; changes apply to both."""
     assets = [
-        {"name": "Award-Wallet-v99.0.0.dmg", "browser_download_url": DMG, "digest": f"sha256:{DMG_SHA256}"},
-        {"name": "Award-Wallet-v99.0.0-Setup.exe", "browser_download_url": SETUP, "digest": f"sha256:{SETUP_SHA256}"},
+        {"name": "Milestash-v99.0.0.dmg", "browser_download_url": DMG, "digest": f"sha256:{DMG_SHA256}"},
+        {"name": "Milestash-v99.0.0-Setup.exe", "browser_download_url": SETUP, "digest": f"sha256:{SETUP_SHA256}"},
     ]
     return {
         "tag_name": "v99.0.0",
@@ -116,7 +116,7 @@ def test_newer_release_offers_download(settings, monkeypatch):
 
 def test_a_release_names_its_download_and_checksum(monkeypatch):
     _fake_github(monkeypatch, _release_payload())
-    release = updates.latest_release("rafaelcgama/award-wallet")
+    release = updates.latest_release("rafaelcgama/milestash")
     assert (release.download_url, release.download_sha256) == (DOWNLOAD, DOWNLOAD_SHA256)
     assert release.page_url == f"{RELEASES}/tag/v99.0.0"
 
@@ -125,7 +125,7 @@ def test_a_release_names_its_download_and_checksum(monkeypatch):
 def test_each_computer_downloads_its_own_app(monkeypatch, on_windows, app):
     monkeypatch.setattr(system, "on_windows", lambda: on_windows)
     _fake_github(monkeypatch, _release_payload())
-    release = updates.latest_release("rafaelcgama/award-wallet")
+    release = updates.latest_release("rafaelcgama/milestash")
     assert (release.download_url, release.download_sha256) == app
 
 
@@ -135,23 +135,23 @@ def test_windows_never_downloads_the_mac_app(monkeypatch):
     mac_only = _release_payload()
     mac_only["assets"] = mac_only["assets"][:1]
     _fake_github(monkeypatch, mac_only)
-    assert updates.latest_release("rafaelcgama/award-wallet").download_url is None
+    assert updates.latest_release("rafaelcgama/milestash").download_url is None
 
 
 @pytest.mark.parametrize(
     "elsewhere",
     [
         "https://example.com/aw.dmg",
-        "http://github.com/rafaelcgama/award-wallet/releases/download/v99.0.0/aw.dmg",
-        "https://github.com/someone-else/award-wallet/releases/download/v99.0.0/aw.dmg",
-        "https://github.com/rafaelcgama/award-wallet/releases/download/../../../../x/y/releases/download/v1/aw.dmg",
-        "https://github.com/rafaelcgama/award-wallet/releases/download/v99.0.0/%2e%2e/aw.dmg",
-        "https://github.com.example.com/rafaelcgama/award-wallet/releases/download/v99.0.0/aw.dmg",
+        "http://github.com/rafaelcgama/milestash/releases/download/v99.0.0/aw.dmg",
+        "https://github.com/someone-else/milestash/releases/download/v99.0.0/aw.dmg",
+        "https://github.com/rafaelcgama/milestash/releases/download/../../../../x/y/releases/download/v1/aw.dmg",
+        "https://github.com/rafaelcgama/milestash/releases/download/v99.0.0/%2e%2e/aw.dmg",
+        "https://github.com.example.com/rafaelcgama/milestash/releases/download/v99.0.0/aw.dmg",
     ],
 )
 def test_nothing_is_downloaded_from_outside_the_apps_own_releases(monkeypatch, elsewhere):
     _fake_github(monkeypatch, _release_payload(browser_download_url=elsewhere))
-    assert updates.latest_release("rafaelcgama/award-wallet").download_url is None
+    assert updates.latest_release("rafaelcgama/milestash").download_url is None
 
 
 def test_current_release_says_up_to_date(settings, monkeypatch):
@@ -176,7 +176,7 @@ class _Installed:
         self.quit_calls = 0
         # Quit right away instead of after the "Installing" page has shown for a moment.
         monkeypatch.setattr(
-            "award_wallet.web.routes.about.threading.Timer",
+            "milestash.web.routes.about.threading.Timer",
             lambda delay, fn: type("T", (), {"start": lambda self: fn()})(),
         )
 
@@ -236,7 +236,7 @@ def _eventually(condition) -> None:
 def test_update_now_is_one_click_with_progress(settings, monkeypatch, tmp_path):
     release = updates.Release("99.0.0", f"{RELEASES}/tag/v99.0.0", DMG, DMG_SHA256)
     monkeypatch.setattr(updates, "latest_release", lambda repo: release)
-    mac = _Mac(monkeypatch, Path("/Applications/Award Wallet.app"))
+    mac = _Mac(monkeypatch, Path("/Applications/Milestash.app"))
     go_on = threading.Event()
 
     def download(url, destination, *, sha256, timeout=60, progress=None):
@@ -251,7 +251,7 @@ def test_update_now_is_one_click_with_progress(settings, monkeypatch, tmp_path):
         mac.attach(window)
         window.app.state.available_update = release
         dashboard = window.get("/").text
-        assert "Award Wallet 99.0.0 is available." in dashboard and "Update now" in dashboard
+        assert "Milestash 99.0.0 is available." in dashboard and "Update now" in dashboard
         # One click on the banner starts it: no second button on another page.
         page = window.post("/update", data={"csrf_token": _token(dashboard)})
         assert page.url.path == "/update"
@@ -263,14 +263,14 @@ def test_update_now_is_one_click_with_progress(settings, monkeypatch, tmp_path):
         # Clicking again while it installs doesn't start a second one.
         window.post("/update", data={"csrf_token": _token(dashboard)})
     [script] = mac.installers
-    assert "'/Applications/Award Wallet.app'" in script and "update.dmg" in script
+    assert "mv /Applications/Milestash.app /Applications/Milestash.app.old" in script and "update.dmg" in script
     assert mac.quit_calls == 1
 
 
 def test_update_now_on_windows_runs_the_new_setup(settings, monkeypatch, tmp_path):
     release = updates.Release("99.0.0", f"{RELEASES}/tag/v99.0.0", SETUP, SETUP_SHA256)
     monkeypatch.setattr(updates, "latest_release", lambda repo: release)
-    pc = _Windows(monkeypatch, tmp_path / "Programs" / "Award Wallet")
+    pc = _Windows(monkeypatch, tmp_path / "Programs" / "Milestash")
     downloads = []
 
     def download(url, destination, *, sha256, timeout=60, progress=None):
@@ -290,7 +290,7 @@ def test_update_now_on_windows_runs_the_new_setup(settings, monkeypatch, tmp_pat
     assert downloads == [(SETUP, SETUP_SHA256)]
     # The Setup it checked is the one it runs, and then the app quits so Setup can replace it.
     [setup] = pc.setups
-    assert setup.name == "Award-Wallet-Setup.exe" and setup.read_bytes() == b"setup"
+    assert setup.name == "Milestash-Setup.exe" and setup.read_bytes() == b"setup"
 
 
 def test_windows_setup_runs_on_its_own_with_no_questions(monkeypatch, tmp_path):
@@ -300,17 +300,17 @@ def test_windows_setup_runs_on_its_own_with_no_questions(monkeypatch, tmp_path):
     monkeypatch.setattr(updates.subprocess, "Popen", lambda command, **options: started.append((command, options)))
     diagnostics = tmp_path / "Diagnostics"
     diagnostics.mkdir()
-    handler = logging.handlers.RotatingFileHandler(diagnostics / "award-wallet.log", encoding="utf-8")
+    handler = logging.handlers.RotatingFileHandler(diagnostics / "milestash.log", encoding="utf-8")
     logging.getLogger().addHandler(handler)
     try:
-        updates._run_setup(tmp_path / "Award-Wallet-Setup.exe")
+        updates._run_setup(tmp_path / "Milestash-Setup.exe")
     finally:
         logging.getLogger().removeHandler(handler)
         handler.close()
     [(command, options)] = started
     # Setup's log goes next to the app's, where the rest of the troubleshooting information is.
     assert command == [
-        str(tmp_path / "Award-Wallet-Setup.exe"),
+        str(tmp_path / "Milestash-Setup.exe"),
         "/VERYSILENT",
         "/SUPPRESSMSGBOXES",
         "/NORESTART",
@@ -325,12 +325,12 @@ def test_windows_setup_runs_on_its_own_with_no_questions(monkeypatch, tmp_path):
 def test_updates_downloaded_by_an_earlier_launch_are_cleared_away(monkeypatch, tmp_path):
     monkeypatch.setattr(updates.tempfile, "gettempdir", lambda: str(tmp_path))
     two_hours_ago = time.time() - 2 * 3600
-    old = tmp_path / "award-wallet-update-old"
+    old = tmp_path / "milestash-update-old"
     old.mkdir()
-    (old / "Award-Wallet-Setup.exe").write_bytes(b"setup")
+    (old / "Milestash-Setup.exe").write_bytes(b"setup")
     os.utime(old, (two_hours_ago, two_hours_ago))
     # One downloading right now stays, and so does everything that isn't the app's.
-    new = tmp_path / "award-wallet-update-new"
+    new = tmp_path / "milestash-update-new"
     new.mkdir()
     other = tmp_path / "someone-elses"
     other.mkdir()
@@ -342,7 +342,7 @@ def test_updates_downloaded_by_an_earlier_launch_are_cleared_away(monkeypatch, t
 def test_a_failed_download_says_why_and_offers_another_try(settings, monkeypatch):
     release = updates.Release("99.0.0", f"{RELEASES}/tag/v99.0.0", DMG, DMG_SHA256)
     monkeypatch.setattr(updates, "latest_release", lambda repo: release)
-    mac = _Mac(monkeypatch, Path("/Applications/Award Wallet.app"))
+    mac = _Mac(monkeypatch, Path("/Applications/Milestash.app"))
 
     def offline(url, destination, *, sha256, timeout=60, progress=None):
         raise updates.UpdateCheckFailed("Couldn't download the update. Check your internet connection.")
@@ -361,7 +361,7 @@ def test_a_failed_download_says_why_and_offers_another_try(settings, monkeypatch
 
 @mac_installer
 def test_an_app_opened_from_the_dmg_offers_to_move_into_applications(settings, monkeypatch):
-    mac = _Mac(monkeypatch, Path("/Volumes/Award Wallet/Award Wallet.app"))
+    mac = _Mac(monkeypatch, Path("/Volumes/Milestash/Milestash.app"))
     monkeypatch.setattr(updates, "_can_write", lambda folder: True)
     monkeypatch.setattr(updates, "bundle_version", lambda app: None)
     with _window(settings) as window:
@@ -369,16 +369,16 @@ def test_an_app_opened_from_the_dmg_offers_to_move_into_applications(settings, m
         dashboard = window.get("/").text
         assert "running from the disk image (.dmg), not your Applications folder" in dashboard
         page = window.post("/move-to-applications", data={"csrf_token": _token(dashboard)})
-        assert "Moving to Applications" in page.text and "/Applications/Award Wallet.app" in page.text
-        assert "eject the Award Wallet disk image" in page.text
+        assert "Moving to Applications" in page.text and "/Applications/Milestash.app" in page.text
+        assert "eject the Milestash disk image" in page.text
     assert mac.quit_calls == 1
     [script] = mac.installers
-    assert "new='/Volumes/Award Wallet/Award Wallet.app'" in script
+    assert "new=/Volumes/Milestash/Milestash.app" in script
 
 
 @mac_installer
 def test_a_stale_copy_opens_the_newer_one_in_applications_instead(settings, monkeypatch):
-    mac = _Mac(monkeypatch, Path.home() / "Downloads" / "Award Wallet.app")
+    mac = _Mac(monkeypatch, Path.home() / "Downloads" / "Milestash.app")
     monkeypatch.setattr(updates, "_can_write", lambda folder: True)
     monkeypatch.setattr(updates, "bundle_version", lambda app: "99.0.0")
     with _window(settings) as window:
@@ -388,12 +388,12 @@ def test_a_stale_copy_opens_the_newer_one_in_applications_instead(settings, monk
         page = window.post("/move-to-applications", data={"csrf_token": _token(dashboard)}).text
         assert "delete the copy in ~/Downloads" in page
     [script] = mac.installers
-    assert "new=''" in script and "open '/Applications/Award Wallet.app'" in script
+    assert "new=''" in script and "open /Applications/Milestash.app" in script
 
 
 @mac_installer
 def test_an_app_in_applications_offers_no_move(settings, monkeypatch):
-    mac = _Mac(monkeypatch, Path("/Applications/Award Wallet.app"))
+    mac = _Mac(monkeypatch, Path("/Applications/Milestash.app"))
     with _window(settings) as window:
         mac.attach(window)
         assert "Move to Applications" not in window.get("/").text
@@ -402,14 +402,14 @@ def test_an_app_in_applications_offers_no_move(settings, monkeypatch):
 @mac_installer
 def test_updates_always_land_in_applications(monkeypatch):
     home = Path.home()
-    assert updates.install_target(Path("/Applications/Award Wallet.app")) == Path("/Applications/Award Wallet.app")
-    assert updates.install_target(home / "Applications/Award Wallet.app") == home / "Applications/Award Wallet.app"
+    assert updates.install_target(Path("/Applications/Milestash.app")) == Path("/Applications/Milestash.app")
+    assert updates.install_target(home / "Applications/Milestash.app") == home / "Applications/Milestash.app"
     monkeypatch.setattr(updates, "_can_write", lambda folder: True)
-    for elsewhere in ("/Volumes/Award Wallet/Award Wallet.app", f"{home}/Downloads/Award Wallet.app"):
-        assert updates.install_target(Path(elsewhere)) == Path("/Applications/Award Wallet.app")
+    for elsewhere in ("/Volumes/Milestash/Milestash.app", f"{home}/Downloads/Milestash.app"):
+        assert updates.install_target(Path(elsewhere)) == Path("/Applications/Milestash.app")
     monkeypatch.setattr(updates, "_can_write", lambda folder: False)
-    assert updates.install_target(home / "Downloads/Award Wallet.app") == home / "Applications/Award Wallet.app"
-    assert updates.where_it_runs(home / "Downloads/Award Wallet.app") == "~/Downloads"
+    assert updates.install_target(home / "Downloads/Milestash.app") == home / "Applications/Milestash.app"
+    assert updates.where_it_runs(home / "Downloads/Milestash.app") == "~/Downloads"
     assert "temporary copy" in updates.where_it_runs(Path("/private/var/folders/x/AppTranslocation/y/d/A.app"))
 
 
@@ -454,7 +454,7 @@ def test_downloads_never_follow_a_redirect_off_https():
 def test_a_release_without_a_checksum_is_not_installed(settings, monkeypatch):
     release = updates.Release("99.0.0", f"{RELEASES}/tag/v99.0.0", DMG, None)
     monkeypatch.setattr(updates, "latest_release", lambda repo: release)
-    mac = _Mac(monkeypatch, Path("/Applications/Award Wallet.app"))
+    mac = _Mac(monkeypatch, Path("/Applications/Milestash.app"))
     downloads = []
     monkeypatch.setattr(updates, "download", lambda *args, **kwargs: downloads.append(args))
     with _window(settings) as window:
@@ -471,11 +471,11 @@ def test_a_page_that_breaks_says_so_and_logs_why(settings, monkeypatch, caplog):
     desktop = settings.model_copy(update={"desktop_token": SecretStr("t")})
     with TestClient(create_app(desktop), base_url="http://127.0.0.1", raise_server_exceptions=False) as window:
         window.get("/?token=t")
-        monkeypatch.setattr("award_wallet.web.routes.dashboard.summarize_accounts", broken)
+        monkeypatch.setattr("milestash.web.routes.dashboard.summarize_accounts", broken)
         page = window.get("/")
     assert page.status_code == 500
     assert "Something went wrong on this page" in page.text and "Back to your points" in page.text
-    [record] = [r for r in caplog.records if r.name == "award_wallet.web.app"]
+    [record] = [r for r in caplog.records if r.name == "milestash.web.app"]
     assert record.message == "GET / failed" and "something broke" in str(record.exc_info[1])
 
 
@@ -532,25 +532,25 @@ def _quit_pid() -> int:
 
 @mac_installer
 def test_installer_replaces_the_app_from_the_dmg_and_reopens_it(tmp_path):
-    app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
+    app = _app(tmp_path / "Applications" / "Milestash.app", "0.5.1")
     dmg = tmp_path / "update.dmg"
     dmg.write_bytes(b"dmg")
-    _app(tmp_path / "update.dmg.contents" / "Award Wallet.app", "0.6.0")
+    _app(tmp_path / "update.dmg.contents" / "Milestash.app", "0.6.0")
     opened = _run(updates.installer_script(app=app, running=app, pid=_quit_pid(), dmg=dmg), tmp_path)
     assert (app / "Contents" / "version").read_text() == "0.6.0"
-    assert not (tmp_path / "Applications" / "Award Wallet.app.old").exists() and not dmg.exists()
+    assert not (tmp_path / "Applications" / "Milestash.app.old").exists() and not dmg.exists()
     assert opened == [str(app)]
 
 
 @mac_installer
 def test_installer_never_changes_the_new_app_once_it_is_in_place(tmp_path):
     # macOS blocks one app changing another that's already in place, like removing the internet
-    # mark from its files, and says Award Wallet "was prevented from modifying apps on your Mac".
+    # mark from its files, and says Milestash "was prevented from modifying apps on your Mac".
     # So the copy is made without the mark instead.
-    app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
+    app = _app(tmp_path / "Applications" / "Milestash.app", "0.5.1")
     dmg = tmp_path / "update.dmg"
     dmg.write_bytes(b"dmg")
-    _app(tmp_path / "update.dmg.contents" / "Award Wallet.app", "0.6.0")
+    _app(tmp_path / "update.dmg.contents" / "Milestash.app", "0.6.0")
     _run(updates.installer_script(app=app, running=app, pid=_quit_pid(), dmg=dmg), tmp_path)
     assert (app / "Contents" / "version").read_text() == "0.6.0"
     assert (tmp_path / "ditto-options").read_text().split() == ["--noqtn"]
@@ -559,10 +559,10 @@ def test_installer_never_changes_the_new_app_once_it_is_in_place(tmp_path):
 
 @mac_installer
 def test_installer_keeps_the_old_app_when_the_copy_fails(tmp_path):
-    app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
+    app = _app(tmp_path / "Applications" / "Milestash.app", "0.5.1")
     dmg = tmp_path / "update.dmg"
     dmg.write_bytes(b"dmg")
-    _app(tmp_path / "update.dmg.contents" / "Award Wallet.app", "0.6.0")
+    _app(tmp_path / "update.dmg.contents" / "Milestash.app", "0.6.0")
     (tmp_path / "ditto-fails").touch()
     opened = _run(updates.installer_script(app=app, running=app, pid=_quit_pid(), dmg=dmg), tmp_path)
     assert (app / "Contents" / "version").read_text() == "0.5.1"
@@ -571,10 +571,10 @@ def test_installer_keeps_the_old_app_when_the_copy_fails(tmp_path):
 
 @mac_installer
 def test_installer_never_copies_over_an_app_it_couldnt_move_aside(tmp_path):
-    app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
+    app = _app(tmp_path / "Applications" / "Milestash.app", "0.5.1")
     dmg = tmp_path / "update.dmg"
     dmg.write_bytes(b"dmg")
-    _app(tmp_path / "update.dmg.contents" / "Award Wallet.app", "0.6.0")
+    _app(tmp_path / "update.dmg.contents" / "Milestash.app", "0.6.0")
     (tmp_path / "mv-fails").touch()
     opened = _run(updates.installer_script(app=app, running=app, pid=_quit_pid(), dmg=dmg), tmp_path)
     assert sorted(path.name for path in (app / "Contents").iterdir()) == ["version"]
@@ -588,7 +588,7 @@ def test_the_installer_writes_what_it_did_next_to_the_app_log(tmp_path):
 
     diagnostics = tmp_path / "Diagnostics"
     diagnostics.mkdir()
-    handler = logging.handlers.RotatingFileHandler(diagnostics / "award-wallet.log")
+    handler = logging.handlers.RotatingFileHandler(diagnostics / "milestash.log")
     logging.getLogger().addHandler(handler)
     try:
         updates._run_installer("echo Installed it", tmp_path)
@@ -597,13 +597,55 @@ def test_the_installer_writes_what_it_did_next_to_the_app_log(tmp_path):
         handler.close()
     log = diagnostics / "install.log"
     _eventually(lambda: "Installed it" in log.read_text())
-    assert f"Award Wallet {__version__} hands over to" in log.read_text()
+    assert f"Milestash {__version__} hands over to" in log.read_text()
+
+
+@mac_installer
+def test_an_update_from_award_wallet_ends_up_named_milestash(tmp_path):
+    # Award Wallet's own installer puts the new version where the old one was, under the old name...
+    old = _app(tmp_path / "Applications" / "Award Wallet.app", "0.13.0")
+    dmg = tmp_path / "update.dmg"
+    dmg.write_bytes(b"dmg")
+    _app(tmp_path / "update.dmg.contents" / "Milestash.app", "0.14.0")
+    assert _run(updates.installer_script(app=old, running=old, pid=_quit_pid(), dmg=dmg), tmp_path) == [str(old)]
+    assert (old / "Contents" / "version").read_text() == "0.14.0"
+    # ...and the new version takes its name once it has quit, then opens again.
+    (tmp_path / "opened").unlink()
+    new = tmp_path / "Applications" / "Milestash.app"
+    assert _run(updates.rename_script(app=old, pid=_quit_pid()), tmp_path) == [str(new)]
+    assert (new / "Contents" / "version").read_text() == "0.14.0" and not old.exists()
+
+
+@mac_installer
+def test_an_app_that_cant_be_renamed_opens_under_its_old_name(tmp_path):
+    old = _app(tmp_path / "Applications" / "Award Wallet.app", "0.14.0")
+    (tmp_path / "mv-fails").touch()
+    assert _run(updates.rename_script(app=old, pid=_quit_pid()), tmp_path) == [str(old)]
+    assert (old / "Contents" / "version").read_text() == "0.14.0"
+
+
+def test_only_award_wallet_in_applications_takes_the_new_name(monkeypatch, tmp_path):
+    applications = tmp_path / "Applications"
+    monkeypatch.setattr(updates, "APPLICATIONS", (applications, tmp_path / "home" / "Applications"))
+
+    def running(app):
+        monkeypatch.setattr(updates, "running_app_bundle", lambda: app)
+        return updates.app_to_rename()
+
+    assert running(None) is None
+    assert running(applications / "Award Wallet.app") == applications / "Award Wallet.app"
+    # A name you gave it yourself, a copy outside Applications, or a Milestash already there: left alone.
+    assert running(applications / "My Miles.app") is None
+    assert running(applications / "Milestash.app") is None
+    assert running(tmp_path / "Downloads" / "Award Wallet.app") is None
+    (applications / "Milestash.app").mkdir(parents=True)
+    assert running(applications / "Award Wallet.app") is None
 
 
 def test_bundle_version_reads_the_info_plist(tmp_path):
     import plistlib
 
-    app = tmp_path / "Award Wallet.app"
+    app = tmp_path / "Milestash.app"
     assert updates.bundle_version(app) is None
     (app / "Contents").mkdir(parents=True)
     (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleShortVersionString": "0.6.0"}))
@@ -612,8 +654,8 @@ def test_bundle_version_reads_the_info_plist(tmp_path):
 
 @mac_installer
 def test_installer_moves_the_app_into_applications(tmp_path):
-    running = _app(tmp_path / "Downloads" / "Award Wallet.app", "0.6.0")
-    target = tmp_path / "Applications" / "Award Wallet.app"
+    running = _app(tmp_path / "Downloads" / "Milestash.app", "0.6.0")
+    target = tmp_path / "Applications" / "Milestash.app"
     opened = _run(updates.installer_script(app=target, running=running, pid=_quit_pid(), source=running), tmp_path)
     assert (target / "Contents" / "version").read_text() == "0.6.0"
     assert opened == [str(target)]

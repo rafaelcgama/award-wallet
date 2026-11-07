@@ -6,14 +6,14 @@ from datetime import date
 
 import pytest
 
-from award_wallet import fetching
-from award_wallet.providers import Expiration
-from award_wallet.providers.american import American
-from award_wallet.providers.american_express import AmericanExpress
-from award_wallet.providers.chase import Chase
-from award_wallet.providers.delta import Delta
+from milestash import fetching
+from milestash.providers import Expiration
+from milestash.providers.american import American
+from milestash.providers.american_express import AmericanExpress
+from milestash.providers.chase import Chase
+from milestash.providers.delta import Delta
 
-CHROME = os.environ.get("AW_BROWSER_PATH") or next(
+CHROME = os.environ.get("MILESTASH_BROWSER_PATH") or next(
     iter(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux64/chrome")), None
 )
 pytestmark = pytest.mark.skipif(CHROME is None, reason="no browser")

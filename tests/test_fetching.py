@@ -6,18 +6,18 @@ import os
 import pytest
 from fakebank import CODE, PASSWORD, USERNAME, FakeBank, serve
 
-from award_wallet import fetching
-from award_wallet.providers import Provider
-from award_wallet.sign_in_view import SignInView
+from milestash import fetching
+from milestash.providers import Provider
+from milestash.sign_in_view import SignInView
 
 CHROME = next(iter(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux64/chrome")), None)
-needs_browser = pytest.mark.skipif(CHROME is None and "AW_BROWSER_PATH" not in os.environ, reason="no browser")
+needs_browser = pytest.mark.skipif(CHROME is None and "MILESTASH_BROWSER_PATH" not in os.environ, reason="no browser")
 
 
 @pytest.fixture(autouse=True)
 def browser_path(monkeypatch):
-    if CHROME and "AW_BROWSER_PATH" not in os.environ:
-        monkeypatch.setenv("AW_BROWSER_PATH", CHROME)
+    if CHROME and "MILESTASH_BROWSER_PATH" not in os.environ:
+        monkeypatch.setenv("MILESTASH_BROWSER_PATH", CHROME)
     monkeypatch.setattr(fetching, "CHALLENGE_GRACE", 4)
     monkeypatch.setattr(fetching, "QUIET_TIMEOUT", 20)
 
@@ -128,7 +128,7 @@ def test_a_username_box_on_the_account_page_is_filled(site, tmp_path, caplog):
     bank, provider = site(sign_in_on_page=True)
     bank.trusted.add("known-mac")
     cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
-    with caplog.at_level("INFO", logger="award_wallet.fetching"):
+    with caplog.at_level("INFO", logger="milestash.fetching"):
         assert fetch(provider, tmp_path / "profile", seed_cookies=cookies) == 52300
     assert "submitted the username" in caplog.text and "clicked the form's button" in caplog.text
     assert bank.searches == []
@@ -151,7 +151,7 @@ def test_a_refresh_that_needs_you_stops_and_says_why(site, tmp_path, caplog, mon
     # number: the refresh stops right away instead, with a screenshot, and nothing pops up.
     monkeypatch.setattr(fetching, "CHALLENGE_GRACE", 60)
     bank, provider = site(confirm_in_place=True)
-    with caplog.at_level("INFO", logger="award_wallet.fetching"):
+    with caplog.at_level("INFO", logger="milestash.fetching"):
         with pytest.raises(fetching.NeedsPerson) as stopped:
             fetch(provider, tmp_path / "profile", screenshot_to=tmp_path / "fake.png")
     assert str(stopped.value) == (
@@ -324,7 +324,7 @@ def test_a_login_you_fix_while_signing_in_is_kept(site, tmp_path, type_login):
         on_new_login=kept.append,
     )
     assert balance == 52300
-    assert view.note == "fake didn't take the saved login. Sign in below, and Award Wallet keeps the login that works."
+    assert view.note == "fake didn't take the saved login. Sign in below, and Milestash keeps the login that works."
     assert kept == [{"username": USERNAME, "password": PASSWORD}]
     assert bank.logins == (2 if type_login else 1)  # the saved login is tried once at most
 
@@ -344,7 +344,7 @@ def test_a_login_the_site_cleared_is_typed_once_more(site, tmp_path, caplog):
     bank, provider = site(clears_form_once=True)
     bank.trusted.add("known-mac")
     cookies = [{"name": "device", "value": "known-mac", "domain": "127.0.0.1", "path": "/"}]
-    with caplog.at_level("INFO", logger="award_wallet.fetching"):
+    with caplog.at_level("INFO", logger="milestash.fetching"):
         assert fetch(provider, tmp_path / "profile", seed_cookies=cookies) == 52300
     assert bank.logins == 2
     assert "the site cleared the login" in caplog.text
@@ -440,7 +440,7 @@ def test_a_sign_in_waits_for_you(site, tmp_path, monkeypatch):
     with pytest.raises(fetching.NeedsPerson, match="The sign-in to fake timed out before it finished"):
         fetch(provider, tmp_path / "profile", view=view, seed_cookies=cookies)
     assert view.note == (
-        "Award Wallet can't find your miles on this page. fake may have changed it: click Stop, and a "
+        "Milestash can't find your miles on this page. fake may have changed it: click Stop, and a "
         "screenshot is saved for checking."
     )
 
@@ -448,7 +448,7 @@ def test_a_sign_in_waits_for_you(site, tmp_path, monkeypatch):
 @needs_browser
 def test_the_log_shows_each_step_but_never_the_login(site, tmp_path, caplog):
     bank, provider = site()
-    with caplog.at_level("INFO", logger="award_wallet.fetching"):
+    with caplog.at_level("INFO", logger="milestash.fetching"):
         with pytest.raises(fetching.NeedsPerson):
             fetch(provider, tmp_path / "profile")
     assert "submitted the login" in caplog.text
