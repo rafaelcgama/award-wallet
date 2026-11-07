@@ -60,6 +60,12 @@ def link_account(
     return account
 
 
+def rename_account(db: Session, account: LoyaltyAccount, label: str) -> None:
+    """The name the program shows; empty goes back to the program's own name."""
+    account.label = (label.strip() or get_provider(account.provider).program)[:MAX_LABEL_LENGTH]
+    db.commit()
+
+
 def update_credentials(db: Session, vault: Vault, account: LoyaltyAccount, credentials: Mapping[str, str]) -> None:
     provider = get_provider(account.provider)
     _replace_login(db, account, _encrypt_credentials(vault, account, provider, credentials))

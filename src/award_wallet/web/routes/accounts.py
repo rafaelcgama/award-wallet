@@ -227,6 +227,14 @@ def _back(account: LoyaltyAccount, from_dashboard: bool) -> str:
     return "/" if from_dashboard else f"/accounts/{account.id}"
 
 
+@router.post("/{account_id}/name", dependencies=[CsrfProtected])
+def rename_account(db: DbSession, user: CurrentUser, account_id: str, label: Annotated[str, Form()] = ""):
+    """A new name, typed over the old one on the program's page; its card shows it too."""
+    account = accounts.get_account(db, user.id, account_id)
+    accounts.rename_account(db, account, label)
+    return RedirectResponse(f"/accounts/{account.id}", status_code=303)
+
+
 @router.post("/{account_id}/login/remove", dependencies=[CsrfProtected])
 def remove_login(request: Request, db: DbSession, user: CurrentUser, account_id: str):
     account = accounts.get_account(db, user.id, account_id)

@@ -68,8 +68,8 @@ If something goes wrong:
 
 ## Using it
 
-- **Link a program** with its username and password, and a name for it if you like. The app
-  signs in and fetches the balance out of sight. Each program has its own Chrome profile, kept by
+- **Link a program** with its username and password. The app signs in and fetches the balance
+  out of sight. Each program has its own Chrome profile, kept by
   the app, so the site remembers this Mac the way it remembers your own Chrome and stops asking.
 - **Balances refresh by themselves** every time you open the app, three programs at a time.
   **Refresh now** does it on demand, and **Refresh** on a program's page does just that one.
@@ -94,6 +94,9 @@ If something goes wrong:
   site couldn't be reached, the next refresh tries again. If the app couldn't find your points on
   the site's page, the site may have changed it: a screenshot of the page goes into Diagnostics, so
   the app can be fixed.
+- **Rename a program** by double-clicking its name on the program's page: type the new name and
+  press Return, or Esc to leave it as it was. Its card shows the new name. A program starts with
+  its own name, like AAdvantage, and an empty name goes back to it.
 - **History** keeps each change in your balance with its date, one entry a day at most, so you can
   see when points came in or went out.
 - **When miles expire:** American's balance page says when your miles expire, and the app reads
@@ -104,8 +107,10 @@ If something goes wrong:
   when points expire, which most sites don't show. You can add how many points expire and on what
   date (or just the date, if the whole balance expires then), and the program's card shows the
   next expiration. Refreshes keep it until the date passes.
-- **The small paper plane** next to a balance opens the program's own site in your browser, to
-  use your points or miles.
+- **Use miles** (or **Use points**) under a balance opens the program's own site in your browser,
+  to use them.
+- **Transfer partners** on a Chase, Amex or Capital One program's page lists the airlines and
+  hotels its points move to, and at what ratio. It stays folded until you click it.
 - **Change saved login** is on the program's page. A new password keeps the site's memory of this
   Mac; a different username starts fresh, so the site may ask to confirm it's you again.
 - **Remove saved login** goes back to entering the balance by hand, and **Remove program** also

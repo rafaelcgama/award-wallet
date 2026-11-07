@@ -39,6 +39,40 @@ countdowns();
 // otherwise wake up still showing yesterday's count.
 setInterval(countdowns, 60 * 1000);
 
+// A program's name changes in place on its page: double-click it, type, then Return. Esc leaves it
+// as it was, and clicking elsewhere keeps what you typed.
+for (const box of document.querySelectorAll(".rename")) {
+  const text = box.querySelector(".rename-text");
+  const form = box.querySelector("form");
+  const input = form.elements.label;
+  let sending = false;
+  const leave = () => {
+    input.value = input.defaultValue;
+    form.hidden = true;
+    text.hidden = false;
+  };
+  text.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    window.getSelection()?.removeAllRanges();
+    text.hidden = true;
+    form.hidden = false;
+    input.focus();
+    input.select();
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      leave();
+    }
+  });
+  input.addEventListener("blur", () => {
+    if (sending || form.hidden) return;
+    if (input.value.trim() === input.defaultValue.trim()) leave();
+    else form.requestSubmit();
+  });
+  form.addEventListener("submit", () => { sending = true; });
+}
+
 // Coming back to a page (with Back) shows its buttons ready again.
 window.addEventListener("pageshow", (event) => {
   if (!event.persisted) return;
