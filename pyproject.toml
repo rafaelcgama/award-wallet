@@ -1,6 +1,6 @@
 [project]
 name = "milestash"
-version = "0.14.0"
+version = "0.14.1"
 description = "One dashboard for all your airline miles and loyalty points."
 readme = "README.md"
 requires-python = ">=3.12"

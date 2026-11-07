@@ -5,6 +5,16 @@ Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-07
+
+### Changed
+- Each release's downloads are now named **Milestash.dmg** and **Milestash-Setup.exe**, without
+  the version, so the README's download links always get the newest one in a click. Installed
+  apps find them under the new names too.
+- The README starts with a download link for macOS and one for Windows, installing takes two
+  steps (or one line in Terminal on a Mac), and building from source has its own section further
+  down, for developers.
+
 ## [0.14.0] - 2026-11-07
 
 ### Added
@@ -21,7 +31,7 @@ Notable changes to Milestash, called Award Wallet until 0.14.0. Versions follow
 - Award Wallet is now **Milestash**, everywhere: the window, the menus, Applications, the Dock,
   the data folder, the release downloads and the repository, `rafaelcgama/milestash` (the old
   address leads there). Award Wallet's **Update now** can't install it, because the repository
-  moved: install it by hand once, as the README's Updating section says. It keeps everything: the
+  moved: install it by hand once, as the README says. It keeps everything: the
   first time it opens, the data folder becomes `~/Library/Application Support/Milestash` by
   itself, with your logins, their keys, the history and each program's Chrome profile.
 - Releases carry the Mac .dmg and the Windows Setup.exe, and the app downloads the one for its

@@ -59,14 +59,13 @@ jobs:
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - name: Build
         run: bash build_dmg.sh
-      - name: Name it for the release
-        env:
-          TAG: ${{ needs.version.outputs.tag }}
-        run: mv "build/Milestash.dmg" "build/Milestash-$TAG.dmg"
+      # The files keep the same names in every release, so the README's links to the newest
+      # (releases/latest/download/<name>) always work. The installed app finds its own file by how
+      # the name ends: .dmg or -Setup.exe.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dmg
-          path: build/Milestash-${{ needs.version.outputs.tag }}.dmg
+          path: build/Milestash.dmg
           if-no-files-found: error
           retention-days: 7
 
@@ -82,14 +81,10 @@ jobs:
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - name: Build
         run: ./build_windows.ps1
-      - name: Name it for the release
-        env:
-          TAG: ${{ needs.version.outputs.tag }}
-        run: Move-Item -LiteralPath build/Milestash-Setup.exe -Destination "build/Milestash-$env:TAG-Setup.exe"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows
-          path: build/Milestash-${{ needs.version.outputs.tag }}-Setup.exe
+          path: build/Milestash-Setup.exe
           if-no-files-found: error
           retention-days: 7
 
