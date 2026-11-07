@@ -10,7 +10,7 @@ from starlette.datastructures import FormData
 from award_wallet.models import BalanceSource, LoyaltyAccount, User
 from award_wallet.providers import Expiration, Provider, UnknownProvider, all_providers, get_provider
 from award_wallet.services import InvalidInput, accounts, balances
-from award_wallet.services.dashboard import checked_at
+from award_wallet.services.dashboard import AccountSummary, checked_at
 from award_wallet.services.refresh import can_fetch
 
 from ..deps import CsrfProtected, CurrentUser, DbSession, PostedForm, VaultDep
@@ -257,7 +257,9 @@ def _render_account(
 ):
     history = balances.balance_history(db, account)
     newest = balances.latest_snapshots(db, [account.id]).get(account.id)
+    summary = AccountSummary(account, get_provider(account.provider), newest)
     context = {
+        "expiring_soon": summary.next_expiration if summary.expires_soon else None,
         "user": user,
         "account": account,
         "checked_at": checked_at(account, newest),

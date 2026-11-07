@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import expiration_text, rewards_link, status_pill %}
+{% from "_macros.html" import expiration_text, expiry_alert, rewards_link, status_pill %}
 {% block head %}{% if busy %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
 {% block content %}
 {% if available_update %}
@@ -83,7 +83,9 @@
     <div class="meta">Open it to {{ "sign in" if auto_fetch and s.provider.supports_fetch and s.account.credentials_encrypted else "enter a balance" }}</div>
     {% endif %}
     {% set lot = s.next_expiration %}
-    {% if lot %}
+    {% if lot and s.expires_soon %}
+    {{ expiry_alert(lot, s.latest.unit, s.provider.keep_alive_hint) }}
+    {% elif lot %}
     <div class="expiry expiry-upcoming">{{ expiration_text(lot, s.latest.unit) }}</div>
     {% else %}
     <div class="expiry">{{ s.provider.expiration_policy }}</div>

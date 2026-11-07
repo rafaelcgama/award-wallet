@@ -2,6 +2,10 @@
 {% if lot.amount %}{{ lot.amount|number }} {{ unit }} expire{% else %}Balance expires{% endif %} {{ lot.expires_on|date }} ({{ lot.expires_on|days_until }})
 {%- endmacro %}
 
+{% macro expiry_alert(lot, unit, hint) -%}
+<div class="expiry-alert" role="alert"><svg class="alert-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg><div><strong>{{ expiration_text(lot, unit) }}</strong> {{ hint }}</div></div>
+{%- endmacro %}
+
 {% macro status_pill(account, provider, busy=(), auto_fetch=True, needs_you={}) -%}
 {% set status = account_status(account, provider, account.id in busy, auto_fetch, account.id in needs_you) %}
 <span class="pill pill-{{ status.tone }}">{{ status.label }}</span>

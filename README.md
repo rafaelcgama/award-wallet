@@ -96,8 +96,12 @@ If something goes wrong:
   the app can be fixed.
 - **History** keeps each change in your balance with its date, one entry a day at most, so you can
   see when points came in or went out.
+- **When miles expire:** American's balance page says when your miles expire, and the app reads
+  that date on each refresh. Three months before it, the program's card shows an alert saying what
+  to do: earn or spend any miles and the date moves 24 months out. The other programs' points
+  don't expire, and their cards say why.
 - **Enter a balance by hand** on a program's page when you didn't save a login for it, or to add
-  when points expire, which the sites don't show. You can add how many points expire and on what
+  when points expire, which most sites don't show. You can add how many points expire and on what
   date (or just the date, if the whole balance expires then), and the program's card shows the
   next expiration. Refreshes keep it until the date passes.
 - **The small paper plane** next to a balance opens the program's own site in your browser, to
@@ -186,7 +190,9 @@ Create a module in `src/award_wallet/providers/`, subclass `Provider`, decorate 
 balance once signed in), then either `balance_labels` (the words shown with the balance, like
 "Ultimate Rewards points": the reader takes the number in the same box) or `balance_patterns`
 (regular expressions that find it in the page's text). Labels are the better choice when a page
-shows more than one balance. Wrap a label in `alone()` when look-alikes sit nearby, like "Pending
+shows more than one balance. If the page says when the balance expires, `expiration_patterns`
+find the date by the words around it, like "Miles expire on Jan 3, 2028", never by where it sits
+in the page. Wrap a label in `alone()` when look-alikes sit nearby, like "Pending
 Miles" next to "Available Miles": then only a box whose whole text is the label counts. The
 sign-in itself is generic. Never rename a provider's `key`: it's stored in the database.
 

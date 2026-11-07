@@ -4,6 +4,15 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-07
+
+### Added
+- American Airlines: each refresh reads when your miles expire from the account summary ("Miles
+  expire on Jan 3, 2028"), found by its words rather than its place on the page, so a redesign
+  doesn't lose it. The card shows the date instead of the general 24-month rule.
+- Three months before a balance expires, its card and its page show an alert with what to do.
+  For American: earn or spend any miles, and the date moves 24 months out.
+
 ## [0.11.4] - 2026-11-06
 
 ### Fixed

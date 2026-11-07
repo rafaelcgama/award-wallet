@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,13 @@ from award_wallet.providers import Provider, get_provider
 
 from .accounts import list_accounts
 from .balances import latest_snapshots
+
+# How long before an expiration the program shows an alert: time enough to earn or spend some.
+EXPIRES_SOON = timedelta(days=90)
+
+
+def expires_soon(lot: ExpirationLot | None, today: date | None = None) -> bool:
+    return lot is not None and lot.expires_on - (today or date.today()) <= EXPIRES_SOON
 
 
 @dataclass(frozen=True)
@@ -27,6 +34,10 @@ class AccountSummary:
         today = date.today()
         upcoming = (lot for lot in self.latest.expirations if lot.expires_on >= today)
         return min(upcoming, key=lambda lot: lot.expires_on, default=None)
+
+    @property
+    def expires_soon(self) -> bool:
+        return expires_soon(self.next_expiration)
 
 
 def checked_at(account: LoyaltyAccount, latest: BalanceSnapshot | None) -> datetime | None:

@@ -2,10 +2,12 @@
 
 import glob
 import os
+from datetime import date
 
 import pytest
 
 from award_wallet import fetching
+from award_wallet.providers import Expiration
 from award_wallet.providers.american import American
 from award_wallet.providers.american_express import AmericanExpress
 from award_wallet.providers.chase import Chase
@@ -135,6 +137,47 @@ def test_american_reads_award_miles_from_a_list_of_numbers(read):
 
 def test_american_never_takes_an_offer_for_the_balance(read):
     assert read("<header>Hi, Rafael</header>" + AA_OFFER, American()) is None
+
+
+# The real account summary (November 2026): the member card, the award miles with when they
+# expire under them, and Loyalty Points, which reset on another date.
+AA_SUMMARY = (
+    "<div id=member-info-container-id><div class=member><h2>Rafael Gama</h2><p>AAdvantage® member</p>"
+    "<p>AAdvantage® member since: Sep 19, 2007</p><p>Million Miler: 50,179 miles</p></div>"
+    "<div class=miles><h3>Award miles balance</h3><p class=big>49,333</p><p>Award Miles</p>"
+    "<a href='#'>Redeem miles</a><small>Miles expire on Jan 3, 2028</small></div>"
+    "<div class=status><h3>AAdvantage® status</h3><p class=big>0</p><p>Loyalty Points</p>"
+    "<p>Loyalty Points reset to zero March 1</p></div></div>"
+)
+
+
+def test_american_reads_the_balance_and_when_it_expires_from_the_real_summary(read, browser):
+    assert read(AA_SUMMARY, American()) == 49333
+    page = browser.new_page()
+    page.set_content(f"<!doctype html><body>{AA_SUMMARY}</body>")
+    assert fetching.read_expirations(page, American()) == [Expiration(date(2028, 1, 3))]
+    page.close()
+
+
+def test_american_finds_the_expiration_by_its_words_wherever_the_page_puts_it(browser):
+    # A redesign that moves the date into another box, splits it across tags or writes it out
+    # in full still gives the same date: the words find it, not where it sits.
+    page = browser.new_page()
+    for body in (
+        "<table><tr><td>Your miles expire on</td><td><b>January 3, 2028</b></td></tr></table>",
+        "<p>Award miles 49,333</p><footer><span>Miles will expire on</span> <span>01/03/2028</span></footer>",
+        "<ul><li>Miles expire on Jan. 3, 2028</li></ul>",
+    ):
+        page.set_content(f"<!doctype html><body>{body}</body>")
+        assert fetching.read_expirations(page, American()) == [Expiration(date(2028, 1, 3))], body
+    for body in (
+        "<p>Your miles won't expire while you have an AAdvantage® card</p>",
+        "<p>Loyalty Points reset to zero March 1</p><p>Member since: Sep 19, 2007</p>",
+        "<p>Miles expire on Foo 99, 2028</p>",
+    ):
+        page.set_content(f"<!doctype html><body>{body}</body>")
+        assert fetching.read_expirations(page, American()) == [], body
+    page.close()
 
 
 # American Express shows the points next to pending points, points that come in once the bill is
