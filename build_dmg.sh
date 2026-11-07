@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Builds Award Wallet.app and "Award Wallet.dmg" in build/. GitHub runs this for each release;
+# Builds Milestash.app and "Milestash.dmg" in build/. GitHub runs this for each release;
 # to build one yourself on a Mac, run from this folder (the README's "Build it yourself" walks
 # through it):
 #   bash build_dmg.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP_NAME="Award Wallet"
+APP_NAME="Milestash"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
 
 if [[ "$(uname)" != "Darwin" ]]; then
@@ -35,14 +35,14 @@ echo "==> Building $APP_NAME.app $VERSION"
 rm -rf build/dist build/work
 uv run pyinstaller --noconfirm --clean --windowed \
   --name "$APP_NAME" \
-  --osx-bundle-identifier com.rafaelcgama.awardwallet \
+  --osx-bundle-identifier com.rafaelcgama.milestash \
   --icon "$PWD/packaging/AppIcon.icns" \
-  --collect-data award_wallet \
-  --add-data "$PWD/src/award_wallet/migrations:award_wallet/migrations" \
-  --collect-submodules award_wallet \
+  --collect-data milestash \
+  --add-data "$PWD/src/milestash/migrations:milestash/migrations" \
+  --collect-submodules milestash \
   --collect-submodules uvicorn \
   --distpath build/dist --workpath build/work --specpath build \
-  packaging/award_wallet_app.py
+  packaging/milestash_app.py
 
 # Show the real version in Finder and About, then re-sign since the Info.plist changed.
 PLIST="build/dist/$APP_NAME.app/Contents/Info.plist"

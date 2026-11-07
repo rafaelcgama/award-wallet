@@ -1,7 +1,7 @@
 import sqlalchemy as sa
 from alembic import command
 
-from award_wallet.db import alembic_config, upgrade_database
+from milestash.db import alembic_config, upgrade_database
 
 
 def test_migrations_match_the_models(tmp_path):

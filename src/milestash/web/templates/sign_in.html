@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Sign in to {{ provider.name }} · Milestash{% endblock %}
+{% block scripts %}<script src="/static/sign-in.js"></script>{% endblock %}
+{% set waiting_note = "Milestash types your saved login. If " ~ provider.name ~ " asks for anything else, like a security code, do it on the page below." %}
+{% block content %}
+<div class="sign-in-header">
+  <div>
+    <a class="back" href="{{ back }}">← {{ "All programs" if from_dashboard else account.label }}</a>
+    <h1 class="sign-in-title">Sign in to {{ provider.name }}</h1>
+  </div>
+  <form method="post" action="/accounts/{{ account.id }}/sign-in/stop" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if from_dashboard %}<input type="hidden" name="back" value="dashboard">{% endif %}
+    <button type="submit" class="button button-secondary" data-busy="Stopping…">Stop</button>
+  </form>
+</div>
+<p class="sign-in-note{% if note %} sign-in-asks{% endif %}" id="sign-in-note" role="status" data-default="{{ waiting_note }}">{{ note or waiting_note }}</p>
+<div class="screen" id="screen"
+     data-status="/accounts/{{ account.id }}/sign-in/status"
+     data-picture="/accounts/{{ account.id }}/sign-in/picture"
+     data-input="/accounts/{{ account.id }}/sign-in/input"
+     data-back="{{ back }}"
+     data-token="{{ csrf_token }}">
+  <canvas class="screen-picture" id="screen-picture" role="img" aria-label="{{ provider.name }}'s page" hidden></canvas>
+  <p class="screen-waiting" id="screen-waiting">Opening {{ provider.name }}…</p>
+  <textarea class="screen-keys" id="screen-keys" aria-label="Typing here types on {{ provider.name }}'s page"
+            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+</div>
+<p class="muted small">
+  This is {{ provider.name }}'s own page, in the Chrome that Milestash refreshes with, out of sight. Click and type
+  on it like in a browser. Once you're signed in, Milestash reads your {{ provider.unit }} and brings you back.
+</p>
+{% endblock %}

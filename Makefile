@@ -1,4 +1,4 @@
-# Shortcuts for working on Award Wallet. Run `make` to list them.
+# Shortcuts for working on Milestash. Run `make` to list them.
 .DEFAULT_GOAL := help
 .PHONY: help setup test lint format check app dmg clean
 
@@ -22,9 +22,9 @@ format: ## Fix formatting and import order
 check: lint test ## Everything CI runs
 
 app: ## Run the app from this branch's code, without installing it
-	uv run --extra desktop python -m award_wallet.desktop
+	uv run --extra desktop python -m milestash.desktop
 
-dmg: ## Build build/Award Wallet.dmg
+dmg: ## Build build/Milestash.dmg
 	bash build_dmg.sh
 
 clean: ## Remove build output and caches (never your data)

@@ -1,5 +1,7 @@
-# Merging into main publishes a release when the version in pyproject.toml is new: this builds
-# the Mac app and attaches the .dmg. The installed app offers it under Check for Updates.
+# Merging into main publishes a release when the version in pyproject.toml is new: this builds the
+# Mac app's .dmg and the Windows Setup.exe and attaches both. The installed app offers the one for
+# its computer under Check for Updates. If one build fails, nothing is published: fix it, or open
+# the run and click "Re-run failed jobs".
 name: Release
 
 on:
@@ -7,8 +9,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Only the job that publishes the release can change the repository.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release
@@ -17,20 +20,21 @@ concurrency:
 # Actions are pinned to exact commits, so a moved tag can't change what runs here. To
 # update one, look up the new tag's commit with `git ls-remote --tags <its repo>`.
 jobs:
-  dmg:
-    runs-on: macos-latest
-    # A stuck run stops here instead of holding a runner for six hours.
-    timeout-minutes: 60
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      new: ${{ steps.version.outputs.new }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # The build runs code from the app's libraries: it gets no way to push to the repository.
-          # Only the steps that read or publish the release get the token.
           persist-credentials: false
       - name: Is this version new?
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
@@ -40,17 +44,71 @@ jobs:
           else
             echo "new=true" >> "$GITHUB_OUTPUT"
           fi
+
+  dmg:
+    needs: version
+    if: needs.version.outputs.new == 'true'
+    runs-on: macos-latest
+    # A stuck run stops here instead of holding a runner for six hours.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The builds run code from the app's libraries: they get no way to push to the repository.
+          persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
-        if: steps.version.outputs.new == 'true'
       - name: Build
-        if: steps.version.outputs.new == 'true'
         run: bash build_dmg.sh
+      - name: Name it for the release
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: mv "build/Milestash.dmg" "build/Milestash-$TAG.dmg"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dmg
+          path: build/Milestash-${{ needs.version.outputs.tag }}.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    needs: version
+    if: needs.version.outputs.new == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - name: Build
+        run: ./build_windows.ps1
+      - name: Name it for the release
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: Move-Item -LiteralPath build/Milestash-Setup.exe -Destination "build/Milestash-$env:TAG-Setup.exe"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows
+          path: build/Milestash-${{ needs.version.outputs.tag }}-Setup.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [version, dmg, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: release
+          merge-multiple: true
       - name: Publish the release
-        if: steps.version.outputs.new == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
-          cp "build/Award Wallet.dmg" "build/Award-Wallet-$TAG.dmg"
-          gh release create "$TAG" "build/Award-Wallet-$TAG.dmg" --target "$GITHUB_SHA" \
-            --title "Award Wallet $TAG" --generate-notes
+          gh release create "$TAG" release/* --target "$GITHUB_SHA" \
+            --title "Milestash $TAG" --generate-notes

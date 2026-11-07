@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}About · Milestash{% endblock %}
+{% block content %}
+<section class="card about">
+  <img class="about-icon" src="/static/icon.png" alt="" width="96" height="96">
+  <h1>Milestash</h1>
+  <p class="muted">Version {{ version }}</p>
+  <p>One place for your airline miles and credit card points: balances, when they were last
+    updated and when they expire.</p>
+
+  {% if checked %}
+    {% if update_error %}
+    <div class="flash flash-error" role="status">{{ update_error }}</div>
+    {% elif update_available %}
+    <div class="flash flash-info" role="status">
+      Version {{ release.version }} is available.
+      {% if can_install %}One click below: it downloads, installs and reopens by itself, and your data stays put.
+      {% elif release.download_url %}<a href="{{ release.download_url }}" target="_blank" rel="noopener">Download it</a>,
+      {% if on_windows %}then open it to install. Your data stays put.
+      {% else %}then open the .dmg and drag Milestash into Applications. Your data stays put.{% endif %}
+      {% elif release.page_url %}<a href="{{ release.page_url }}" target="_blank" rel="noopener">See the release</a>.{% endif %}
+    </div>
+    {% if can_install %}
+    <form method="post" action="/update">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button" data-busy="Starting…">Update to {{ release.version }}</button>
+    </form>
+    {% endif %}
+    {% else %}
+    <div class="flash flash-info" role="status">You have the latest version.</div>
+    {% endif %}
+  {% endif %}
+
+  <p class="actions">
+    <a class="button" href="/about?check=1">Check for updates</a>
+    <a class="button button-secondary" href="/">Back to your points</a>
+  </p>
+</section>
+{% endblock %}

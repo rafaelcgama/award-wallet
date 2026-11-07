@@ -2,7 +2,7 @@ import base64
 
 import pytest
 
-from award_wallet.security.vault import Vault, VaultError, generate_key
+from milestash.security.vault import Vault, VaultError, generate_key
 
 
 def make_vault(*entries: tuple[str, str]) -> Vault:
@@ -39,7 +39,7 @@ def test_rotation_keeps_old_data_readable():
     assert rotated.decrypt(old_blob, context="ctx") == b"legacy"
 
     new_blob = rotated.encrypt(b"fresh", context="ctx")
-    with pytest.raises(VaultError, match="not in AW_ENCRYPTION_KEYS"):
+    with pytest.raises(VaultError, match="not in MILESTASH_ENCRYPTION_KEYS"):
         make_vault(("old", old_key)).decrypt(new_blob, context="ctx")
 
 

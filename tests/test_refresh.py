@@ -7,11 +7,11 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from award_wallet import fetching
-from award_wallet.models import BalanceSnapshot, LoyaltyAccount, SyncStatus
-from award_wallet.providers import Expiration
-from award_wallet.services import accounts
-from award_wallet.web import create_app
+from milestash import fetching
+from milestash.models import BalanceSnapshot, LoyaltyAccount, SyncStatus
+from milestash.providers import Expiration
+from milestash.services import accounts
+from milestash.web import create_app
 
 from conftest import CSRF_PATTERN, post_form
 
@@ -392,7 +392,7 @@ def test_every_launch_refreshes_quietly_with_the_same_browser(settings):
 
 
 def test_cookies_from_older_versions_are_carried_over_once(settings):
-    from award_wallet.services import accounts
+    from milestash.services import accounts
 
     sites = FakeSites()
     app = open_app(settings, sites)
@@ -470,7 +470,7 @@ def test_the_app_says_what_a_site_wants_while_you_sign_in(settings):
 def test_a_rejected_login_is_not_retried_until_saved_again(settings):
     sites = FakeSites()
     sites.answers["chase"] = fetching.LoginRejected(
-        "Chase didn't take the saved login. Click Sign in to sign in once; Award Wallet keeps the login that works."
+        "Chase didn't take the saved login. Click Sign in to sign in once; Milestash keeps the login that works."
     )
     app = open_app(settings, sites)
     with TestClient(app, base_url="http://127.0.0.1") as window:

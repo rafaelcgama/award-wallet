@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from award_wallet.config import Settings
-from award_wallet.security.vault import generate_key
-from award_wallet.web import create_app
+from milestash.config import Settings
+from milestash.security.vault import generate_key
+from milestash.web import create_app
 
 CSRF_PATTERN = re.compile(r'name="csrf_token" value="([^"]+)"')
 
@@ -17,24 +17,26 @@ LAUNCH_TOKEN = "launch-token"
 
 
 def browser_for_tests() -> str | None:
-    """The Chrome or Chromium the sign-in and reading tests drive: AW_BROWSER_PATH, or the one
+    """The Chrome or Chromium the sign-in and reading tests drive: MILESTASH_BROWSER_PATH, or the one
     Playwright keeps in /opt/pw-browsers. Without one, those tests are skipped."""
-    return os.environ.get("AW_BROWSER_PATH") or next(
+    return os.environ.get("MILESTASH_BROWSER_PATH") or next(
         iter(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux64/chrome")), None
     )
 
 
 def pytest_configure(config):
-    # CI installs a browser and sets AW_REQUIRE_BROWSER, so the tests that sign in and read
+    # CI installs a browser and sets MILESTASH_REQUIRE_BROWSER, so the tests that sign in and read
     # balances can't be skipped there without anyone noticing.
-    if os.environ.get("AW_REQUIRE_BROWSER") and not ((path := browser_for_tests()) and Path(path).is_file()):
-        raise pytest.UsageError("AW_REQUIRE_BROWSER is set, but no browser was found: set AW_BROWSER_PATH.")
+    if os.environ.get("MILESTASH_REQUIRE_BROWSER") and not ((path := browser_for_tests()) and Path(path).is_file()):
+        raise pytest.UsageError(
+            "MILESTASH_REQUIRE_BROWSER is set, but no browser was found: set MILESTASH_BROWSER_PATH."
+        )
 
 
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     return Settings(
-        database_url=f"sqlite:///{tmp_path / 'award_wallet.db'}",
+        database_url=f"sqlite:///{tmp_path / 'milestash.db'}",
         secret_key="test-secret-key",
         encryption_keys=f"test:{generate_key()}",
         desktop_token=LAUNCH_TOKEN,

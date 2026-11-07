@@ -12,7 +12,7 @@ import uvicorn
 
 from conftest import LAUNCH_TOKEN, link
 
-CHROME = os.environ.get("AW_BROWSER_PATH") or next(
+CHROME = os.environ.get("MILESTASH_BROWSER_PATH") or next(
     iter(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux64/chrome")), None
 )
 pytestmark = pytest.mark.skipif(CHROME is None, reason="no browser")

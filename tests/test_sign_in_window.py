@@ -11,14 +11,14 @@ import pytest
 import uvicorn
 from fakebank import CODE, PASSWORD, USERNAME, FakeBank, serve
 
-from award_wallet import fetching
-from award_wallet.providers.capital_one import CapitalOne
-from award_wallet.web import create_app
+from milestash import fetching
+from milestash.providers.capital_one import CapitalOne
+from milestash.web import create_app
 
 from conftest import LAUNCH_TOKEN
 
 CHROME = next(iter(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux64/chrome")), None)
-needs_browser = pytest.mark.skipif(CHROME is None and "AW_BROWSER_PATH" not in os.environ, reason="no browser")
+needs_browser = pytest.mark.skipif(CHROME is None and "MILESTASH_BROWSER_PATH" not in os.environ, reason="no browser")
 
 
 def serve_app(app):
@@ -36,8 +36,8 @@ def serve_app(app):
 def test_you_sign_in_from_the_apps_window(settings, monkeypatch):
     from playwright.sync_api import sync_playwright
 
-    browser_path = os.environ.get("AW_BROWSER_PATH") or CHROME
-    monkeypatch.setenv("AW_BROWSER_PATH", browser_path)
+    browser_path = os.environ.get("MILESTASH_BROWSER_PATH") or CHROME
+    monkeypatch.setenv("MILESTASH_BROWSER_PATH", browser_path)
     monkeypatch.setattr(fetching, "CHALLENGE_GRACE", 4)
     monkeypatch.setattr(fetching, "QUIET_TIMEOUT", 20)
     # Capital One, played by the pretend bank: it asks to confirm it's you until it knows the browser.
