@@ -69,8 +69,8 @@ If something goes wrong:
 ## Using it
 
 - **Link a program** with its username and password. The app signs in and fetches the balance
-  out of sight. Each program has its own Chrome profile, kept by
-  the app, so the site remembers this Mac the way it remembers your own Chrome and stops asking.
+  out of sight. Each program has its own Chrome profile, kept by the app, so the site remembers
+  this Mac the way it remembers your own Chrome and stops asking.
 - **Balances refresh by themselves** every time you open the app, three programs at a time.
   **Refresh now** does it on demand, and **Refresh** on a program's page does just that one.
   Chrome works invisibly, with no window, tab or Dock icon, and types the saved login one key at
@@ -201,6 +201,13 @@ in the page. Wrap a label in `alone()` when look-alikes sit nearby, like "Pendin
 Miles" next to "Available Miles": then only a box whose whole text is the label counts. The
 sign-in itself is generic. Never rename a provider's `key`: it's stored in the database.
 
+`program` is the program's own name, like "AAdvantage": a program has that name when it's linked,
+and goes back to it when its name is cleared. `unit` ("miles" or "points") and `rewards_url` make
+its **Use miles** button. For a bank's points, `transfer_partners` lists the airlines and hotels
+they move to, each a `TransferPartner` with its ratio, like "1:1", and a note when the ratio
+depends on the card. Banks change these a few times a year, so a comment above the list says when
+it was last checked.
+
 ## Development
 
 You need [uv](https://docs.astral.sh/uv/): `curl -LsSf https://astral.sh/uv/install.sh | sh`, or
@@ -223,7 +230,8 @@ uv run alembic revision --autogenerate -m "describe the change"
 
 `tests/test_migrations.py` fails if `models.py` changes without a matching migration.
 
-The tests that sign in to a pretend bank and read balances off pages need a browser. CI installs
+Some tests need a browser: the ones that sign in to a pretend bank, read balances off pages, or
+run the app's own scripts, like the expiration countdown and renaming a program. CI installs
 Chromium for them and sets `AW_REQUIRE_BROWSER`, so a missing browser fails the run instead of
 skipping them. On your Mac they're skipped unless `AW_BROWSER_PATH` names a Chrome or Chromium to
 use.
@@ -235,9 +243,10 @@ use.
   10 minutes.
 - To try a branch before merging: `git fetch && git switch <branch> && make app`.
   `git switch main` goes back.
-- Each pull request bumps the version in `pyproject.toml` and `src/award_wallet/__init__.py`
-  (a test checks they match), runs `uv lock` so `uv.lock` has the new version too (CI fails
-  otherwise), and adds a `CHANGELOG.md` entry.
+- Each pull request that changes the app bumps the version in `pyproject.toml` and
+  `src/award_wallet/__init__.py` (a test checks they match), runs `uv lock` so `uv.lock` has the
+  new version too (CI fails otherwise), and adds a `CHANGELOG.md` entry.
+- Every pull request also updates this README when it changes anything the README describes.
 - Merging into `main` with a new version publishes it: the release workflow builds the .dmg on a
   Mac runner (a few minutes, under **Actions**) and attaches it to a GitHub release, and the
   installed app offers it. Merging without a version bump releases nothing.
