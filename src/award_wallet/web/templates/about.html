@@ -16,7 +16,8 @@
       Version {{ release.version }} is available.
       {% if can_install %}One click below: it downloads, installs and reopens by itself, and your data stays put.
       {% elif release.download_url %}<a href="{{ release.download_url }}" target="_blank" rel="noopener">Download it</a>,
-      then open the .dmg and drag Award Wallet into Applications. Your data stays put.
+      {% if on_windows %}then open it to install. Your data stays put.
+      {% else %}then open the .dmg and drag Award Wallet into Applications. Your data stays put.{% endif %}
       {% elif release.page_url %}<a href="{{ release.page_url }}" target="_blank" rel="noopener">See the release</a>.{% endif %}
     </div>
     {% if can_install %}

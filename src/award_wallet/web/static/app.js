@@ -35,7 +35,7 @@ function countdowns() {
   }
 }
 countdowns();
-// Checked every minute rather than timed to midnight: a Mac that sleeps through midnight would
+// Checked every minute rather than timed to midnight: a computer that sleeps through midnight would
 // otherwise wake up still showing yesterday's count.
 setInterval(countdowns, 60 * 1000);
 

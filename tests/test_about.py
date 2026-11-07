@@ -3,6 +3,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -13,8 +14,12 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from award_wallet import __version__, updates
+from award_wallet import __version__, system, updates
 from award_wallet.web import create_app
+
+# The Mac app's installer is a shell script that works with Mac paths like /Applications: its tests
+# run on Macs and Linux, not on Windows, which has its own installer (see the _Windows tests).
+mac_installer = pytest.mark.skipif(sys.platform == "win32", reason="the Mac installer's paths and shell")
 
 
 class _window:
@@ -37,7 +42,7 @@ def test_version_matches_package_metadata():
     import tomllib
     from pathlib import Path
 
-    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8"))
     assert pyproject["project"]["version"] == __version__
 
 
@@ -82,11 +87,23 @@ def _fake_github(monkeypatch, payload=None, error=None):
 RELEASES = "https://github.com/rafaelcgama/award-wallet/releases"
 DMG = f"{RELEASES}/download/v99.0.0/Award-Wallet-v99.0.0.dmg"
 DMG_SHA256 = hashlib.sha256(b"dmg").hexdigest()
+SETUP = f"{RELEASES}/download/v99.0.0/Award-Wallet-v99.0.0-Setup.exe"
+SETUP_SHA256 = hashlib.sha256(b"setup").hexdigest()
+# The download for the computer the tests run on.
+DOWNLOAD, DOWNLOAD_SHA256 = (SETUP, SETUP_SHA256) if sys.platform == "win32" else (DMG, DMG_SHA256)
 
 
-def _release_payload(**dmg) -> dict:
-    asset = {"name": "Award-Wallet-v99.0.0.dmg", "browser_download_url": DMG, "digest": f"sha256:{DMG_SHA256}"}
-    return {"tag_name": "v99.0.0", "html_url": f"{RELEASES}/tag/v99.0.0", "assets": [{**asset, **dmg}]}
+def _release_payload(**changes) -> dict:
+    """A release as GitHub lists it, with the Mac and the Windows app; changes apply to both."""
+    assets = [
+        {"name": "Award-Wallet-v99.0.0.dmg", "browser_download_url": DMG, "digest": f"sha256:{DMG_SHA256}"},
+        {"name": "Award-Wallet-v99.0.0-Setup.exe", "browser_download_url": SETUP, "digest": f"sha256:{SETUP_SHA256}"},
+    ]
+    return {
+        "tag_name": "v99.0.0",
+        "html_url": f"{RELEASES}/tag/v99.0.0",
+        "assets": [{**asset, **changes} for asset in assets],
+    }
 
 
 def test_newer_release_offers_download(settings, monkeypatch):
@@ -94,14 +111,31 @@ def test_newer_release_offers_download(settings, monkeypatch):
     with _window(settings) as window:
         page = window.get("/about?check=1")
         assert "Version 99.0.0 is available" in page.text
-        assert DMG in page.text
+        assert DOWNLOAD in page.text
 
 
 def test_a_release_names_its_download_and_checksum(monkeypatch):
     _fake_github(monkeypatch, _release_payload())
     release = updates.latest_release("rafaelcgama/award-wallet")
-    assert (release.download_url, release.download_sha256) == (DMG, DMG_SHA256)
+    assert (release.download_url, release.download_sha256) == (DOWNLOAD, DOWNLOAD_SHA256)
     assert release.page_url == f"{RELEASES}/tag/v99.0.0"
+
+
+@pytest.mark.parametrize(("on_windows", "app"), [(False, (DMG, DMG_SHA256)), (True, (SETUP, SETUP_SHA256))])
+def test_each_computer_downloads_its_own_app(monkeypatch, on_windows, app):
+    monkeypatch.setattr(system, "on_windows", lambda: on_windows)
+    _fake_github(monkeypatch, _release_payload())
+    release = updates.latest_release("rafaelcgama/award-wallet")
+    assert (release.download_url, release.download_sha256) == app
+
+
+def test_windows_never_downloads_the_mac_app(monkeypatch):
+    # Say the release is out but its Setup isn't attached yet.
+    monkeypatch.setattr(system, "on_windows", lambda: True)
+    mac_only = _release_payload()
+    mac_only["assets"] = mac_only["assets"][:1]
+    _fake_github(monkeypatch, mac_only)
+    assert updates.latest_release("rafaelcgama/award-wallet").download_url is None
 
 
 @pytest.mark.parametrize(
@@ -135,14 +169,11 @@ def test_failed_check_is_explained(settings, monkeypatch):
         assert "No published releases" in window.get("/about?check=1").text
 
 
-class _Mac:
-    """The installed Mac app, as the update code sees it: where it runs, and its quit hook."""
+class _Installed:
+    """The installed app, as the update code sees it: its quit hook, and where it runs."""
 
-    def __init__(self, monkeypatch, app: Path):
+    def __init__(self, monkeypatch):
         self.quit_calls = 0
-        self.installers: list[str] = []
-        monkeypatch.setattr(updates, "running_app_bundle", lambda: app)
-        monkeypatch.setattr(updates, "_run_installer", lambda text, folder: self.installers.append(text))
         # Quit right away instead of after the "Installing" page has shown for a moment.
         monkeypatch.setattr(
             "award_wallet.web.routes.about.threading.Timer",
@@ -154,6 +185,29 @@ class _Mac:
 
     def quit(self) -> None:
         self.quit_calls += 1
+
+
+class _Mac(_Installed):
+    """The installed Mac app, and the installer scripts it starts."""
+
+    def __init__(self, monkeypatch, app: Path):
+        super().__init__(monkeypatch)
+        self.installers: list[str] = []
+        monkeypatch.setattr(system, "on_windows", lambda: False)
+        monkeypatch.setattr(updates, "running_app_bundle", lambda: app)
+        monkeypatch.setattr(updates, "_run_installer", lambda text, folder: self.installers.append(text))
+
+
+class _Windows(_Installed):
+    """The installed Windows app, and the Setups it runs."""
+
+    def __init__(self, monkeypatch, folder: Path):
+        super().__init__(monkeypatch)
+        self.setups: list[Path] = []
+        monkeypatch.setattr(system, "on_windows", lambda: True)
+        monkeypatch.setattr(updates, "running_app_bundle", lambda: None)
+        monkeypatch.setattr(updates, "installed_windows_app", lambda: folder)
+        monkeypatch.setattr(updates, "_run_setup", self.setups.append)
 
 
 def _token(page: str) -> str:
@@ -178,6 +232,7 @@ def _eventually(condition) -> None:
         time.sleep(0.02)
 
 
+@mac_installer
 def test_update_now_is_one_click_with_progress(settings, monkeypatch, tmp_path):
     release = updates.Release("99.0.0", f"{RELEASES}/tag/v99.0.0", DMG, DMG_SHA256)
     monkeypatch.setattr(updates, "latest_release", lambda repo: release)
@@ -212,6 +267,78 @@ def test_update_now_is_one_click_with_progress(settings, monkeypatch, tmp_path):
     assert mac.quit_calls == 1
 
 
+def test_update_now_on_windows_runs_the_new_setup(settings, monkeypatch, tmp_path):
+    release = updates.Release("99.0.0", f"{RELEASES}/tag/v99.0.0", SETUP, SETUP_SHA256)
+    monkeypatch.setattr(updates, "latest_release", lambda repo: release)
+    pc = _Windows(monkeypatch, tmp_path / "Programs" / "Award Wallet")
+    downloads = []
+
+    def download(url, destination, *, sha256, timeout=60, progress=None):
+        downloads.append((url, sha256))
+        progress(100, 100)
+        destination.write_bytes(b"setup")
+
+    monkeypatch.setattr(updates, "download", download)
+    with _window(settings) as window:
+        pc.attach(window)
+        window.app.state.available_update = release
+        dashboard = window.get("/").text
+        assert "Update now" in dashboard
+        window.post("/update", data={"csrf_token": _token(dashboard)})
+        _wait_for(window, state="installing", percent=100)
+        _eventually(lambda: pc.quit_calls == 1)
+    assert downloads == [(SETUP, SETUP_SHA256)]
+    # The Setup it checked is the one it runs, and then the app quits so Setup can replace it.
+    [setup] = pc.setups
+    assert setup.name == "Award-Wallet-Setup.exe" and setup.read_bytes() == b"setup"
+
+
+def test_windows_setup_runs_on_its_own_with_no_questions(monkeypatch, tmp_path):
+    import logging.handlers
+
+    started = []
+    monkeypatch.setattr(updates.subprocess, "Popen", lambda command, **options: started.append((command, options)))
+    diagnostics = tmp_path / "Diagnostics"
+    diagnostics.mkdir()
+    handler = logging.handlers.RotatingFileHandler(diagnostics / "award-wallet.log", encoding="utf-8")
+    logging.getLogger().addHandler(handler)
+    try:
+        updates._run_setup(tmp_path / "Award-Wallet-Setup.exe")
+    finally:
+        logging.getLogger().removeHandler(handler)
+        handler.close()
+    [(command, options)] = started
+    # Setup's log goes next to the app's, where the rest of the troubleshooting information is.
+    assert command == [
+        str(tmp_path / "Award-Wallet-Setup.exe"),
+        "/VERYSILENT",
+        "/SUPPRESSMSGBOXES",
+        "/NORESTART",
+        "/NOCANCEL",
+        f"/LOG={diagnostics / 'install.log'}",
+    ]
+    if sys.platform == "win32":
+        # It carries on once the app has quit.
+        assert options["creationflags"] & subprocess.DETACHED_PROCESS
+
+
+def test_updates_downloaded_by_an_earlier_launch_are_cleared_away(monkeypatch, tmp_path):
+    monkeypatch.setattr(updates.tempfile, "gettempdir", lambda: str(tmp_path))
+    two_hours_ago = time.time() - 2 * 3600
+    old = tmp_path / "award-wallet-update-old"
+    old.mkdir()
+    (old / "Award-Wallet-Setup.exe").write_bytes(b"setup")
+    os.utime(old, (two_hours_ago, two_hours_ago))
+    # One downloading right now stays, and so does everything that isn't the app's.
+    new = tmp_path / "award-wallet-update-new"
+    new.mkdir()
+    other = tmp_path / "someone-elses"
+    other.mkdir()
+    os.utime(other, (two_hours_ago, two_hours_ago))
+    updates.remove_old_downloads()
+    assert not old.exists() and new.exists() and other.exists()
+
+
 def test_a_failed_download_says_why_and_offers_another_try(settings, monkeypatch):
     release = updates.Release("99.0.0", f"{RELEASES}/tag/v99.0.0", DMG, DMG_SHA256)
     monkeypatch.setattr(updates, "latest_release", lambda repo: release)
@@ -232,6 +359,7 @@ def test_a_failed_download_says_why_and_offers_another_try(settings, monkeypatch
     assert mac.quit_calls == 0 and mac.installers == []
 
 
+@mac_installer
 def test_an_app_opened_from_the_dmg_offers_to_move_into_applications(settings, monkeypatch):
     mac = _Mac(monkeypatch, Path("/Volumes/Award Wallet/Award Wallet.app"))
     monkeypatch.setattr(updates, "_can_write", lambda folder: True)
@@ -248,6 +376,7 @@ def test_an_app_opened_from_the_dmg_offers_to_move_into_applications(settings, m
     assert "new='/Volumes/Award Wallet/Award Wallet.app'" in script
 
 
+@mac_installer
 def test_a_stale_copy_opens_the_newer_one_in_applications_instead(settings, monkeypatch):
     mac = _Mac(monkeypatch, Path.home() / "Downloads" / "Award Wallet.app")
     monkeypatch.setattr(updates, "_can_write", lambda folder: True)
@@ -262,6 +391,7 @@ def test_a_stale_copy_opens_the_newer_one_in_applications_instead(settings, monk
     assert "new=''" in script and "open '/Applications/Award Wallet.app'" in script
 
 
+@mac_installer
 def test_an_app_in_applications_offers_no_move(settings, monkeypatch):
     mac = _Mac(monkeypatch, Path("/Applications/Award Wallet.app"))
     with _window(settings) as window:
@@ -269,6 +399,7 @@ def test_an_app_in_applications_offers_no_move(settings, monkeypatch):
         assert "Move to Applications" not in window.get("/").text
 
 
+@mac_installer
 def test_updates_always_land_in_applications(monkeypatch):
     home = Path.home()
     assert updates.install_target(Path("/Applications/Award Wallet.app")) == Path("/Applications/Award Wallet.app")
@@ -399,6 +530,7 @@ def _quit_pid() -> int:
     return child.pid
 
 
+@mac_installer
 def test_installer_replaces_the_app_from_the_dmg_and_reopens_it(tmp_path):
     app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
     dmg = tmp_path / "update.dmg"
@@ -410,6 +542,7 @@ def test_installer_replaces_the_app_from_the_dmg_and_reopens_it(tmp_path):
     assert opened == [str(app)]
 
 
+@mac_installer
 def test_installer_never_changes_the_new_app_once_it_is_in_place(tmp_path):
     # macOS blocks one app changing another that's already in place, like removing the internet
     # mark from its files, and says Award Wallet "was prevented from modifying apps on your Mac".
@@ -424,6 +557,7 @@ def test_installer_never_changes_the_new_app_once_it_is_in_place(tmp_path):
     assert not (tmp_path / "xattr-ran").exists()
 
 
+@mac_installer
 def test_installer_keeps_the_old_app_when_the_copy_fails(tmp_path):
     app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
     dmg = tmp_path / "update.dmg"
@@ -435,6 +569,7 @@ def test_installer_keeps_the_old_app_when_the_copy_fails(tmp_path):
     assert opened == [str(app)]
 
 
+@mac_installer
 def test_installer_never_copies_over_an_app_it_couldnt_move_aside(tmp_path):
     app = _app(tmp_path / "Applications" / "Award Wallet.app", "0.5.1")
     dmg = tmp_path / "update.dmg"
@@ -447,6 +582,7 @@ def test_installer_never_copies_over_an_app_it_couldnt_move_aside(tmp_path):
     assert opened == [str(app)]
 
 
+@mac_installer
 def test_the_installer_writes_what_it_did_next_to_the_app_log(tmp_path):
     import logging.handlers
 
@@ -474,6 +610,7 @@ def test_bundle_version_reads_the_info_plist(tmp_path):
     assert updates.bundle_version(app) == "0.6.0"
 
 
+@mac_installer
 def test_installer_moves_the_app_into_applications(tmp_path):
     running = _app(tmp_path / "Downloads" / "Award Wallet.app", "0.6.0")
     target = tmp_path / "Applications" / "Award Wallet.app"

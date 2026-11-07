@@ -37,3 +37,37 @@ jobs:
           echo "AW_REQUIRE_BROWSER=1" >> "$GITHUB_ENV"
       - name: Test
         run: uv run pytest
+
+  windows:
+    # The Windows app: the tests on Windows with its Google Chrome, then the app and its installer.
+    # Setup.exe is kept with each run for 30 days, so it can be tried before merging: open the run
+    # from the pull request's checks, then Summary > Artifacts.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - name: Install
+        run: uv sync --locked --extra desktop
+      - name: Use the runner's Google Chrome for the browser tests
+        run: |
+          $chrome = @("$env:ProgramFiles", "${env:ProgramFiles(x86)}") |
+            ForEach-Object { Join-Path $_ "Google\Chrome\Application\chrome.exe" } |
+            Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $chrome) { throw "Google Chrome isn't installed on this runner." }
+          "AW_BROWSER_PATH=$chrome" >> $env:GITHUB_ENV
+          "AW_REQUIRE_BROWSER=1" >> $env:GITHUB_ENV
+      - name: Test
+        run: uv run pytest
+      - name: Build the app and Setup.exe
+        env:
+          SKIP_TESTS: "1"
+        run: ./build_windows.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Award-Wallet-Setup
+          path: build/Award-Wallet-Setup.exe
+          if-no-files-found: error
+          retention-days: 30

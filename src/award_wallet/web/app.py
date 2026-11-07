@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from award_wallet import __version__, updates
+from award_wallet import __version__, system, updates
 from award_wallet.config import Settings
 from award_wallet.db import create_db_engine, make_sessionmaker, upgrade_database
 from award_wallet.security.vault import Vault
@@ -56,7 +56,7 @@ def create_app(settings: Settings) -> FastAPI:
         screenshots_dir=settings.screenshots_dir,
     )
     app.state.refreshed_on_open = False
-    # Set by the Mac app: closes the window, which quits the app.
+    # Set by the desktop app: closes the window, which quits the app.
     app.state.quit_app = None
     app.state.available_update = None
     app.state.updater = updates.Updater()
@@ -64,7 +64,7 @@ def create_app(settings: Settings) -> FastAPI:
     session_key = settings.secret_key.get_secret_value()
     if settings.desktop_token:
         # Each launch signs its window's session with a new key, so a session cookie from an
-        # earlier launch, or one copied off this Mac, opens nothing.
+        # earlier launch, or one copied off this computer, opens nothing.
         session_key += settings.desktop_token.get_secret_value()
     app.add_middleware(
         SessionMiddleware,
@@ -111,7 +111,7 @@ def create_app(settings: Settings) -> FastAPI:
         log.error("%s %s failed", request.method, request.url.path, exc_info=exc)
         message = (
             "Something went wrong on this page. What happened is in the Diagnostics log "
-            "(Help → Show Diagnostics in Finder)."
+            f"(Help → Show Diagnostics in {system.file_browser()})."
         )
         try:
             return render_error(request, 500, message)

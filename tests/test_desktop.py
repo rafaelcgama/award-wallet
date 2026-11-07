@@ -1,7 +1,9 @@
 import re
 import stat
+import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from award_wallet.desktop import desktop_settings
@@ -13,7 +15,9 @@ from conftest import csrf_token, link, post_form
 def test_first_launch_creates_private_keys_and_reuses_them(tmp_path):
     first = desktop_settings(tmp_path / "app", "token-1")
     keys_file = tmp_path / "app" / "settings.env"
-    assert stat.S_IMODE(keys_file.stat().st_mode) == 0o600
+    if sys.platform != "win32":
+        # On Windows, the AppData folder it's in is yours alone already.
+        assert stat.S_IMODE(keys_file.stat().st_mode) == 0o600
     second = desktop_settings(tmp_path / "app", "token-2")
     assert first.encryption_keys == second.encryption_keys
     assert second.auto_fetch
@@ -98,11 +102,12 @@ def test_pages_run_only_the_apps_own_scripts():
     # Their content security policy blocks code written into a page, so none may creep back in.
     templates = Path(__file__).parents[1] / "src" / "award_wallet" / "web" / "templates"
     for template in templates.glob("*.html"):
-        text = template.read_text()
+        text = template.read_text(encoding="utf-8")
         assert not re.search(r"<script(?![^>]*\bsrc=)", text), template.name
         assert not re.search(r"\son[a-z]+=|\sstyle=|javascript:", text), template.name
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows keeps each person's AppData folder to them")
 def test_the_data_folder_is_yours_alone(tmp_path):
     folder = tmp_path / "app"
     folder.mkdir()
@@ -134,7 +139,7 @@ def test_log_file_is_kept_in_the_diagnostics_folder(tmp_path):
         logging.getLogger("award_wallet.test").info("hello from the test")
         for handler in logging.getLogger().handlers:
             handler.flush()
-        assert "hello from the test" in (folder / "award-wallet.log").read_text()
+        assert "hello from the test" in (folder / "award-wallet.log").read_text(encoding="utf-8")
         assert folder.name == "Diagnostics"
     finally:
         root = logging.getLogger()
@@ -171,3 +176,115 @@ def test_check_browser_starts_chrome_and_says_so(monkeypatch, capsys):
     desktop.main(["--check-browser"])
     assert "Chrome is ready: Mozilla/5.0 Chrome/150.0" in capsys.readouterr().out
     assert started == [True, "closed", "stopped"]
+
+
+def test_each_computer_keeps_the_data_where_its_apps_keep_theirs(monkeypatch, tmp_path):
+    from award_wallet import desktop, system
+
+    monkeypatch.setattr(system, "on_mac", lambda: False)
+    monkeypatch.setattr(system, "on_windows", lambda: True)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    assert desktop.data_dir() == tmp_path / "AppData" / "Local" / "Award Wallet"
+    monkeypatch.setattr(system, "on_windows", lambda: False)
+    monkeypatch.setattr(system, "on_mac", lambda: True)
+    assert desktop.data_dir() == Path.home() / "Library" / "Application Support" / "Award Wallet"
+
+
+def test_the_database_address_works_with_windows_folders(tmp_path):
+    settings = desktop_settings(tmp_path / "Award Wallet", "launch-token")
+    assert settings.database_url == f"sqlite:///{(tmp_path / 'Award Wallet' / 'award_wallet.db').as_posix()}"
+    assert "\\" not in settings.database_url
+
+
+@pytest.mark.parametrize(
+    ("on_windows", "menus", "diagnostics"),
+    [(True, ["Help"], "Show Diagnostics in File Explorer"), (False, ["__app__", "Help"], "Show Diagnostics in Finder")],
+)
+def test_help_is_where_each_computer_keeps_it(monkeypatch, on_windows, menus, diagnostics):
+    # On Windows, the Help menu is at the top of the window; on a Mac, in the menu bar, with Check
+    # for Updates in the Award Wallet menu too.
+    pytest.importorskip("webview.menu")
+    from award_wallet import desktop, system
+
+    monkeypatch.setattr(system, "on_windows", lambda: on_windows)
+    shown = desktop.app_menus(window=None, base_url="http://127.0.0.1:1")
+    assert [menu.title for menu in shown] == menus
+    assert [item.title for item in shown[-1].items] == ["About Award Wallet", "Check for Updates…", diagnostics]
+
+
+def test_opening_the_app_again_on_windows_shows_the_open_one(monkeypatch):
+    from award_wallet import desktop, system, windows
+
+    shown = []
+    monkeypatch.setattr(system, "on_windows", lambda: True)
+    monkeypatch.setattr(windows, "claim_single_instance", lambda: False)
+    monkeypatch.setattr(windows, "show_running_copy", shown.append)
+    monkeypatch.setattr(desktop, "start_server", lambda settings: pytest.fail("a second copy started"))
+    desktop.main([])
+    assert shown == ["Award Wallet"]
+
+
+def test_without_webview2_windows_says_what_to_get(monkeypatch):
+    from award_wallet import desktop, system, windows
+
+    problems = []
+    monkeypatch.setattr(system, "on_windows", lambda: True)
+    monkeypatch.setattr(windows, "claim_single_instance", lambda: True)
+    monkeypatch.setattr(desktop, "window_engine", lambda: "mshtml")
+    monkeypatch.setattr(desktop, "_show_problem", lambda heading, text: problems.append(heading))
+    monkeypatch.setattr(desktop, "start_server", lambda settings: pytest.fail("the app started"))
+    desktop.main([])
+    assert problems == ["Award Wallet needs Microsoft Edge WebView2"]
+
+
+class _Chrome:
+    """Stands in for the hidden Chrome the self-test starts."""
+
+    def __init__(self, started: list):
+        self.started = started
+
+    def __call__(self, profile):
+        self.started.append(profile)
+        chrome = self
+
+        class Page:
+            def evaluate(self, script):
+                return "Mozilla/5.0 Chrome/150.0.0.0"
+
+        class Context:
+            pages = [Page()]
+
+            def close(self):
+                chrome.started.append("closed")
+
+        class Playwright:
+            def stop(self):
+                chrome.started.append("stopped")
+
+        return Playwright(), Context()
+
+
+def test_the_self_test_checks_a_build_without_your_data(monkeypatch, tmp_path):
+    from award_wallet import desktop, fetching, system
+
+    started = []
+    monkeypatch.setattr(fetching, "browser_launcher", _Chrome(started))
+    monkeypatch.setattr(system, "on_windows", lambda: False)
+    monkeypatch.setattr(desktop, "data_dir", lambda: pytest.fail("the self-test touched your data"))
+    report = tmp_path / "report.txt"
+    assert desktop.main(["--self-test", str(report)]) is None
+    assert report.read_text(encoding="utf-8") == "ok\nPages: ok\nChrome: Mozilla/5.0 Chrome/150.0.0.0\n"
+    assert started[1:] == ["closed", "stopped"]
+
+
+def test_a_self_test_that_fails_says_why_and_never_raises(monkeypatch, tmp_path):
+    from award_wallet import desktop, fetching
+
+    def no_chrome(profile):
+        raise fetching.ChromeMissing("Google Chrome isn't installed")
+
+    monkeypatch.setattr(fetching, "browser_launcher", no_chrome)
+    report = tmp_path / "report.txt"
+    assert desktop.self_test(report) is False
+    text = report.read_text(encoding="utf-8")
+    assert text.startswith("failed\nPages: ok\n") and "Google Chrome isn't installed" in text

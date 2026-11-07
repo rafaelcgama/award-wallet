@@ -33,11 +33,11 @@ class Settings(BaseSettings):
     encryption_keys: SecretStr
     auto_migrate: bool = True
     # A new secret on every launch. The app's window opens /?token=... once; anything else on
-    # this Mac that finds the port can't get in without it.
+    # this computer that finds the port can't get in without it.
     desktop_token: SecretStr | None = None
     # Sign in to program websites with Chrome to fetch balances, including on every launch.
     auto_fetch: bool = False
-    # Where each program's Chrome profile lives: its cookies, and the site's memory of this Mac.
+    # Where each program's Chrome profile lives: its cookies, and the site's memory of this computer.
     browser_dir: Path | None = None
     # Where a screenshot of the page is saved when a fetch fails, to help fix the program's reader.
     screenshots_dir: Path | None = None
@@ -52,5 +52,5 @@ def create_keys_file(path: Path) -> None:
         encryption_key=f"k{date.today():%Y%m%d}:{generate_key()}",
     )
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, "w") as handle:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(content)

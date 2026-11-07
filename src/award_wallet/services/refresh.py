@@ -51,7 +51,7 @@ class Refresher:
         fetch: Callable[..., int] = fetching.fetch_balance,
     ):
         self._sessions, self._vault, self._fetch = sessions, vault, fetch
-        # One Chrome profile per program, kept between runs so the site remembers this Mac.
+        # One Chrome profile per program, kept between runs so the site remembers this computer.
         self._browser_dir = browser_dir or Path(tempfile.gettempdir()) / "award-wallet-browser"
         self._screenshots_dir = screenshots_dir
         # Sign-ins first, then refreshes, each in the order asked.
@@ -131,8 +131,8 @@ class Refresher:
 
     def forget_browser(self, account_id: str) -> None:
         """Delete a program's Chrome profile: its cookies, and with them the site's memory of this
-        Mac. If a fetch is using it, a sign-in is stopped and the profile goes when the fetch ends:
-        deleted from under a running Chrome, it would be written again."""
+        computer. If a fetch is using it, a sign-in is stopped and the profile goes when the fetch
+        ends: deleted from under a running Chrome, it would be written again."""
         profile = self.browser_profile(account_id)
         with self._lock:
             if account_id not in self._waiting:
@@ -253,7 +253,7 @@ class Refresher:
             login = account.credentials_encrypted
             credentials = accounts.read_credentials(self._vault, account) or {}
             # Versions before 0.5 kept the site's cookies in the database: carry them into the new
-            # Chrome profile once, so the site still knows this Mac.
+            # Chrome profile once, so the site still knows this computer.
             old_state = accounts.read_session_state(self._vault, account) or {}
             rejected = account.sync_status == SyncStatus.LOGIN_REJECTED
         screenshot = self._screenshots_dir / f"{provider.key}.png" if self._screenshots_dir else None

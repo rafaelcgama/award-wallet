@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
+from award_wallet import system
 from award_wallet.models import LoyaltyAccount, SyncStatus
 from award_wallet.providers import Provider
 
@@ -98,6 +99,7 @@ def _page_globals(request: Request) -> dict[str, Any]:
         "auto_fetch": request.app.state.settings.auto_fetch,
         "busy": request.app.state.refresher.busy(),
         "needs_you": request.app.state.refresher.needs_you(),
+        "on_windows": system.on_windows(),
     }
 
 
