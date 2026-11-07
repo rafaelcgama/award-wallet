@@ -13,9 +13,6 @@
   <form method="post" action="/accounts/new" class="stack" autocomplete="off">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="provider" value="{{ provider.key }}">
-    <label><span>Name for this account <span class="muted small">(optional)</span></span>
-      <input name="label" value="{{ label or '' }}" placeholder="{{ provider.program }}" maxlength="100">
-    </label>
     <fieldset class="stack">
       <legend>{{ provider.name }} login <span class="muted small">(optional)</span></legend>
       <p class="muted small">

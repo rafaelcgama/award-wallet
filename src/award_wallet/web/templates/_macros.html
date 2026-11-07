@@ -20,9 +20,24 @@
 <span class="pill pill-{{ status.tone }}">{{ status.label }}</span>
 {%- endmacro %}
 
+{# Opens the program's own site, to book with the points; it sits above the card's own link. #}
 {% macro rewards_link(provider) -%}
 <a class="rewards-link" href="{{ provider.rewards_url }}" target="_blank" rel="noopener noreferrer"
-   title="Use your {{ provider.unit }} on {{ provider.name }}" aria-label="Use your {{ provider.unit }} on {{ provider.name }} (opens in a new tab)">
-  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16l20-8-6 12-3-5-5 3 1-5z"/></svg>
+   title="Use {{ provider.unit }} on {{ provider.name }}'s site" aria-label="Use {{ provider.unit }} on {{ provider.name }}'s site (opens in a new tab)">
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16l20-8-6 12-3-5-5 3 1-5z"/></svg>
+  <span>Use {{ provider.unit }}</span>
 </a>
+{%- endmacro %}
+
+{# The program's name on its page: double-click it to change it in place, then Return to save or
+   Esc to leave it. The card on the main page shows whatever it's called here. #}
+{% macro rename_title(account, provider, csrf_token) -%}
+<div class="rename">
+  <h1 class="rename-text" title="Double-click to rename">{{ account.label }}</h1>
+  <form method="post" action="/accounts/{{ account.id }}/name" class="rename-form" hidden>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input name="label" value="{{ account.label }}" placeholder="{{ provider.program }}" maxlength="100"
+           aria-label="Name for this program" autocomplete="off" autocapitalize="off" spellcheck="false">
+  </form>
+</div>
 {%- endmacro %}

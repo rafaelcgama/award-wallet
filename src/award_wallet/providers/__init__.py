@@ -1,7 +1,7 @@
 """Loyalty program integrations. Importing this package registers every provider."""
 
 from . import american, american_express, capital_one, chase, delta, united  # noqa: F401  (registers the providers)
-from .base import CredentialField, Expiration, FetchResult, Provider
+from .base import CredentialField, Expiration, FetchResult, Provider, TransferPartner
 from .registry import UnknownProvider, all_providers, get_provider
 
 __all__ = [
@@ -9,6 +9,7 @@ __all__ = [
     "Expiration",
     "FetchResult",
     "Provider",
+    "TransferPartner",
     "UnknownProvider",
     "all_providers",
     "get_provider",

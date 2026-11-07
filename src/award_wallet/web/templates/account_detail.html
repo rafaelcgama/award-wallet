@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import expiry_alert, expiry_line, rewards_link, status_pill %}
+{% from "_macros.html" import expiry_alert, expiry_line, rename_title, rewards_link, status_pill %}
 {% block title %}{{ account.label }} · Award Wallet{% endblock %}
 {% set fetchable = auto_fetch and provider.supports_fetch and account.credentials_encrypted %}
 {% set working = account.id in busy %}
@@ -8,18 +8,19 @@
 <a class="back" href="/">← All programs</a>
 <div class="page-header">
   <div>
-    <div class="eyebrow">{{ provider.name }} · {{ provider.program }} {{ rewards_link(provider) }}</div>
-    <h1>{{ account.label }}</h1>
+    <div class="eyebrow">{{ provider.name }} · {{ provider.program }}</div>
+    {{ rename_title(account, provider, csrf_token) }}
   </div>
   {{ status_pill(account, provider, busy, auto_fetch, needs_you) }}
 </div>
 
 <section class="card">
   {% if latest %}
-  <div class="balance balance-large">{{ latest.balance|number }} <span class="unit">{{ latest.unit }}</span> {{ rewards_link(provider) }}</div>
+  <div class="balance balance-large">{{ latest.balance|number }} <span class="unit">{{ latest.unit }}</span></div>
   <div class="meta">
     Updated {{ checked_at|time_ago }} ({{ checked_at|datetime }}){% if latest.source == "manual" and checked_at == latest.captured_at %}, entered by hand{% endif %}
   </div>
+  <div class="link-row">{{ rewards_link(provider) }}</div>
   {% if latest.expirations %}
   {% if expiring_soon %}
   {{ expiry_alert(expiring_soon, latest.unit, provider.keep_alive_hint) }}
@@ -34,6 +35,7 @@
   {% endif %}
   {% else %}
   <div class="balance balance-empty">No balance yet</div>
+  <div class="link-row">{{ rewards_link(provider) }}</div>
   <p class="expiry">{{ provider.expiration_policy }}</p>
   {% endif %}
   {% if account.sync_message and not working %}
@@ -74,6 +76,33 @@
   </div>
   {% endif %}
 </section>
+
+{% if provider.transfer_partners %}
+{% set partners = provider.transfer_partners %}
+{% set airlines = partners|selectattr("kind", "equalto", "airline")|list %}
+{% set hotels = partners|selectattr("kind", "equalto", "hotel")|list %}
+<section class="card">
+  <details class="manual partners">
+    <summary>Transfer partners <span class="summary-count">{{ airlines|length }} airlines, {{ hotels|length }} hotels</span></summary>
+    <p class="muted small">1:1 means 1,000 of your {{ provider.unit }} become 1,000 miles or hotel points; 1:2 means they become 2,000.</p>
+    <div class="partner-columns">
+      {% for title, group in (("Airlines", airlines), ("Hotels", hotels)) if group %}
+      <div>
+        <h3>{{ title }}</h3>
+        <ul class="partner-list">
+          {% for partner in group %}
+          <li><span>{{ partner.name }}</span><span class="ratio">{{ partner.ratio }}{% if partner.note %}*{% endif %}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
+    {% for partner in partners if partner.note %}
+    <p class="muted small">* {{ partner.name }}: {{ partner.note }}.</p>
+    {% endfor %}
+  </details>
+</section>
+{% endif %}
 
 {% macro manual_form() %}
     {% if balance_error %}<div class="flash flash-error" role="alert">{{ balance_error }}</div>{% endif %}

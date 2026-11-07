@@ -4,6 +4,21 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-07
+
+### Added
+- Rename a program by double-clicking its name on the program's page: type, then Return to save
+  or Esc to leave it as it was. Its card shows the new name.
+- Chase, Amex and Capital One programs list their transfer partners, the airlines and hotels their
+  points move to and at what ratio, folded away on the program's page until you open it.
+
+### Changed
+- A **Use miles** (or **Use points**) button under the balance opens the program's site, in place
+  of the small paper plane, which was easy to miss.
+- Every program starts with its own name, like AAdvantage, and the Link page no longer asks for
+  one. A program linked under its company's name, like "American Airlines", now shows the
+  program's own name too.
+
 ## [0.12.1] - 2026-11-07
 
 ### Changed

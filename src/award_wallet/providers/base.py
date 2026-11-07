@@ -35,6 +35,15 @@ class Expiration:
     amount: int | None = None
 
 
+@dataclass(frozen=True)
+class TransferPartner:
+    name: str
+    kind: str  # "airline" or "hotel"
+    ratio: str  # your points to the partner's, like "1:1"
+    # When the ratio depends on something, like which card you have.
+    note: str | None = None
+
+
 @dataclass
 class FetchResult:
     balance: int
@@ -74,6 +83,9 @@ class Provider:
     expires_on_text: ClassVar[str | None] = None
     # What to do when an expiration is near (see EXPIRES_SOON), shown with the alert.
     keep_alive_hint: ClassVar[str] = "Use them before then, or check the program's site."
+    # Programs the points move to, for banks' points. Banks change these a few times a year, so
+    # each list says when it was last checked against the bank's own page.
+    transfer_partners: ClassVar[tuple[TransferPartner, ...]] = ()
 
     @property
     def supports_fetch(self) -> bool:

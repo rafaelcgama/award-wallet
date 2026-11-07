@@ -1,9 +1,10 @@
+import re
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
 
 from award_wallet.models import BalanceSnapshot, BalanceSource, ExpirationLot, LoyaltyAccount
-from award_wallet.providers import Expiration
+from award_wallet.providers import Expiration, all_providers
 from award_wallet.services import accounts, balances
 
 from conftest import link, post_form
@@ -174,8 +175,76 @@ def test_rewards_links_open_each_program_site(client):
     account_id = link(client, "chase")
     post_form(client, f"/accounts/{account_id}/balance", {"balance": "1000"}, token_from=f"/accounts/{account_id}")
     for page in (client.get("/").text, client.get(f"/accounts/{account_id}").text):
-        assert page.count('href="https://ultimaterewards.chase.com"') == 2
+        assert page.count('href="https://ultimaterewards.chase.com"') == 1
         assert 'target="_blank"' in page
+        assert "<span>Use points</span>" in page
+
+
+def test_bank_programs_list_their_transfer_partners_folded_away(client):
+    chase = link(client, "chase")
+    page = client.get(f"/accounts/{chase}").text
+    assert '<details class="manual partners">' in page
+    assert 'Transfer partners <span class="summary-count">10 airlines, 4 hotels</span>' in page
+    assert "World of Hyatt" in page and "* World of Hyatt: 4:3 with Sapphire Preferred" in page
+    # Airlines' own miles don't move anywhere.
+    united = link(client, "united")
+    assert "Transfer partners" not in client.get(f"/accounts/{united}").text
+
+
+def test_transfer_partner_lists_are_well_formed():
+    for provider in all_providers():
+        names = [partner.name for partner in provider.transfer_partners]
+        assert len(names) == len(set(names)), provider.key
+        assert bool(names) == (provider.category == "bank"), provider.key
+        for partner in provider.transfer_partners:
+            assert partner.kind in ("airline", "hotel"), partner
+            assert re.fullmatch(r"\d+(\.\d+)?:\d+(\.\d+)?", partner.ratio), partner
+
+
+def test_linking_starts_with_the_programs_own_name(client, db):
+    assert 'name="label"' not in client.get("/accounts/new?provider=american").text
+    account_id = link(client, "american")
+    assert db.get(LoyaltyAccount, account_id).label == "AAdvantage"
+
+
+def test_a_program_is_renamed_on_its_page_and_its_card_follows(client, db):
+    account_id = link(client, "american", label="American Airlines")
+    page = client.get(f"/accounts/{account_id}").text
+    assert 'title="Double-click to rename">American Airlines</h1>' in page
+    assert f'action="/accounts/{account_id}/name"' in page
+    # The card only shows the name.
+    assert f'action="/accounts/{account_id}/name"' not in client.get("/").text
+
+    response = post_form(
+        client,
+        f"/accounts/{account_id}/name",
+        {"label": "  AAdvantage  "},
+        token_from=f"/accounts/{account_id}",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/accounts/{account_id}"
+    db.expire_all()
+    assert db.get(LoyaltyAccount, account_id).label == "AAdvantage"
+    assert f'href="/accounts/{account_id}">AAdvantage</a>' in client.get("/").text
+
+    # An empty name is the program's own again, and a long one is cut to fit.
+    page = f"/accounts/{account_id}"
+    post_form(client, f"{page}/name", {"label": "Mine"}, token_from=page)
+    post_form(client, f"{page}/name", {"label": " "}, token_from=page)
+    db.expire_all()
+    assert db.get(LoyaltyAccount, account_id).label == "AAdvantage"
+    post_form(client, f"{page}/name", {"label": "x" * 300}, token_from=page)
+    db.expire_all()
+    assert db.get(LoyaltyAccount, account_id).label == "x" * 100
+
+
+def test_renaming_needs_the_pages_token(client, db):
+    account_id = link(client, "united")
+    response = client.post(f"/accounts/{account_id}/name", data={"label": "Hacked"})
+    assert response.status_code == 403
+    db.expire_all()
+    assert db.get(LoyaltyAccount, account_id).label == "MileagePlus"
 
 
 def test_american_airlines_can_be_linked(client):
