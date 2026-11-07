@@ -174,11 +174,13 @@ if [ -n "$new" ] && [ -d "$new" ]; then
   rm -rf {app}.old
   # Only copy once the old app is out of the way: copying over it would mix the two versions.
   if [ ! -e {app}.old ] && {{ [ ! -e {app} ] || mv {app} {app}.old; }}; then
-    if ditto "$new" {app}; then
+    # A copy downloaded with a browser is marked as from the internet, which makes macOS ask again
+    # before opening it; this one came from the app itself, so it's copied without that mark.
+    # Never change the new app once it's in place (removing the mark afterwards, say): macOS counts
+    # that as modifying another app, blocks it and says Award Wallet "was prevented from modifying
+    # apps on your Mac".
+    if ditto --noqtn "$new" {app}; then
       rm -rf {app}.old
-      # A copy downloaded with a browser is marked as from the internet, which makes macOS ask
-      # again before opening it. This one came from the app itself.
-      xattr -dr com.apple.quarantine {app} 2>/dev/null
       echo "Installed $new as {app}"
     else
       echo "Couldn't copy $new, so the app is left as it was"
