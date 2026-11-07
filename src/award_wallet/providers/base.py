@@ -65,6 +65,12 @@ class Provider:
     balance_labels: ClassVar[tuple[str, ...]] = ()
     # Regular expressions run over that page's text; group 1 is the balance, like "52,300".
     balance_patterns: ClassVar[tuple[str, ...]] = ()
+    # Regular expressions run over the balance page's text that find when the balance expires;
+    # group 1 is the date, like "Jan 3, 2028" or "01/03/2028". Matched on the words around the date,
+    # never on where it sits in the page, so a redesign of the page doesn't lose it.
+    expiration_patterns: ClassVar[tuple[str, ...]] = ()
+    # What to do when an expiration is near (see EXPIRES_SOON), shown with the alert.
+    keep_alive_hint: ClassVar[str] = "Use them before then, or check the program's site."
 
     @property
     def supports_fetch(self) -> bool:

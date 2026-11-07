@@ -260,6 +260,8 @@ class Refresher:
 
         # A login you signed in with, after the site turned the saved one down.
         learned: dict[str, str] = {}
+        # When the balance expires, if the program's page says.
+        expirations: list = []
         try:
             balance = self._fetch(
                 provider,
@@ -272,6 +274,7 @@ class Refresher:
                 screenshot_to=screenshot,
                 seed_cookies=old_state.get("cookies"),
                 on_new_login=learned.update,
+                on_expirations=expirations.extend,
             )
         except Exception as exc:
             status, message = self._outcome(provider, exc)
@@ -301,7 +304,7 @@ class Refresher:
                 self._finish(db, account, SyncStatus.CHECK_BALANCE, None)
                 return True
             self._finish(db, account, SyncStatus.OK, None, commit=False)
-            balances.record_balance(db, account, balance=balance, source=BalanceSource.SYNC)
+            balances.record_balance(db, account, balance=balance, source=BalanceSource.SYNC, expirations=expirations)
             return True
 
     def _unchanged(self, db: Session, account_id: str, login: bytes | None, key: str) -> LoyaltyAccount | None:

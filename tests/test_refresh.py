@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +9,7 @@ from pydantic import SecretStr
 
 from award_wallet import fetching
 from award_wallet.models import BalanceSnapshot, LoyaltyAccount, SyncStatus
+from award_wallet.providers import Expiration
 from award_wallet.services import accounts
 from award_wallet.web import create_app
 
@@ -28,6 +30,8 @@ class FakeSites:
         self.seeds: list = []
         self.typed: list[bool] = []
         self.logins: list[dict] = []
+        # What each program's page says about expiring, by key.
+        self.expiring: dict[str, list] = {}
 
     def __call__(
         self,
@@ -40,6 +44,7 @@ class FakeSites:
         screenshot_to=None,
         seed_cookies=None,
         on_new_login=None,
+        on_expirations=None,
     ):
         self.calls.append((provider.key, view is not None))
         self.profiles.append(profile)
@@ -51,6 +56,8 @@ class FakeSites:
             answer = answer(view) if answer.__code__.co_argcount == 1 else answer(view, on_new_login)
         if isinstance(answer, Exception):
             raise answer
+        if on_expirations:
+            on_expirations(self.expiring.get(provider.key, []))
         return answer
 
 
@@ -84,6 +91,40 @@ def test_saving_a_login_fetches_out_of_sight(settings):
         assert sites.calls == [("capital_one", False)]  # no window
         page = window.get("/").text
         assert "52,300" in page and "Up to date" in page and "Refresh now" in page
+
+
+def test_a_refresh_keeps_the_expiration_date_the_site_shows(settings):
+    sites = FakeSites()
+    sites.answers["american"] = 49333
+    sites.expiring["american"] = [Expiration(date(2028, 1, 3))]
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        link_with_login(window, "american")
+        app.state.refresher.wait()
+        page = window.get("/").text
+        assert "49,333" in page and "Jan 3, 2028" in page
+        assert "every 24 months" not in page  # the date replaces the general rule
+
+
+def test_three_months_before_the_miles_expire_the_program_says_what_to_do(settings):
+    sites = FakeSites()
+    sites.answers["american"] = 49333
+    soon = date.today() + timedelta(days=80)
+    sites.expiring["american"] = [Expiration(soon)]
+    app = open_app(settings, sites)
+    with TestClient(app, base_url="http://127.0.0.1") as window:
+        window.get("/?token=t")
+        link_with_login(window, "american")
+        app.state.refresher.wait()
+        page = window.get("/").text
+        assert 'class="expiry-alert"' in page and "the date moves 24 months out" in page
+        # Further out, it's a quiet line with the date, no alert.
+        sites.expiring["american"] = [Expiration(date.today() + timedelta(days=200))]
+        post_form(window, "/refresh", {}, token_from="/")
+        app.state.refresher.wait()
+        page = window.get("/").text
+        assert 'class="expiry-alert"' not in page and "Balance expires" in page
 
 
 def until(condition, seconds=10):

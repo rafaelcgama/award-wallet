@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import expiration_text, rewards_link, status_pill %}
+{% from "_macros.html" import expiration_text, expiry_alert, rewards_link, status_pill %}
 {% block title %}{{ account.label }} · Award Wallet{% endblock %}
 {% set fetchable = auto_fetch and provider.supports_fetch and account.credentials_encrypted %}
 {% set working = account.id in busy %}
@@ -21,6 +21,9 @@
     Updated {{ checked_at|time_ago }} ({{ checked_at|datetime }}){% if latest.source == "manual" and checked_at == latest.captured_at %}, entered by hand{% endif %}
   </div>
   {% if latest.expirations %}
+  {% if expiring_soon %}
+  {{ expiry_alert(expiring_soon, latest.unit, provider.keep_alive_hint) }}
+  {% endif %}
   <ul class="expirations">
     {% for lot in latest.expirations %}
     <li>{{ expiration_text(lot, latest.unit) }}</li>

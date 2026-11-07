@@ -27,11 +27,12 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from award_wallet.providers import Provider
+from award_wallet.providers import Expiration, Provider
 from award_wallet.sign_in_view import SignInView
 
 log = logging.getLogger(__name__)
@@ -493,6 +494,34 @@ def find_balance(text: str, patterns: tuple[str, ...]) -> int | None:
     return None
 
 
+def _date(text: str) -> date | None:
+    text = re.sub(r"\s+", " ", text.replace(".", "").strip())
+    text = re.sub(r"^(sept)\b", "Sep", text, flags=re.IGNORECASE)
+    for layout in ("%b %d, %Y", "%B %d, %Y", "%b %d %Y", "%B %d %Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text, layout).date()
+        except ValueError:
+            continue
+    return None
+
+
+def find_expiration(text: str, patterns: tuple[str, ...]) -> date | None:
+    """The date the balance expires, from the first pattern whose date makes sense."""
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            if found := _date(match.group(1)):
+                return found
+    return None
+
+
+def read_expirations(page, provider: Provider) -> list[Expiration]:
+    """When the whole balance expires, if the program's page says so, else nothing."""
+    if not provider.expiration_patterns:
+        return []
+    found = find_expiration(_page_text(page), provider.expiration_patterns)
+    return [Expiration(found)] if found else []
+
+
 def read_by_label(page, labels: tuple[str, ...]) -> tuple[int | None, str]:
     """The number one of the labels names on the page, and what was seen, for the log. Each frame
     is walked once for all the labels, and the first label has the first say."""
@@ -756,6 +785,7 @@ def fetch_balance(
     screenshot_to: Path | None = None,
     seed_cookies: list[dict[str, Any]] | None = None,
     on_new_login: Callable[[dict[str, str]], None] | None = None,
+    on_expirations: Callable[[list[Expiration]], None] | None = None,
 ) -> int:
     """Sign in if needed and read the balance, in hidden Chrome with the program's profile folder.
 
@@ -794,6 +824,16 @@ def fetch_balance(
             if screenshot_to:
                 _screenshot(page, screenshot_to)
             raise
+        if on_expirations:
+            try:
+                expirations = read_expirations(page, provider)
+            except Exception as exc:  # the balance is what matters; the date is a bonus
+                log.info("%s: couldn't look for the expiration date: %s", provider.key, exc)
+                expirations = []
+            log.info(
+                "%s: %s", provider.key, "found when the miles expire" if expirations else "no expiration date shown"
+            )
+            on_expirations(expirations)
         if watcher and on_new_login and (run.rejected or not type_login):
             if typed := watcher.login(credentials):
                 log.info("%s: keeping the login you signed in with", provider.key)
