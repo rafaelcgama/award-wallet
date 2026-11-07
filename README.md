@@ -8,9 +8,9 @@ Chase Ultimate Rewards, Capital One Miles and American Express Membership Reward
 It's a personal app: everything stays on your computer, nothing runs in the background, and
 nothing sits in the menu bar or next to the clock. Closing the window quits it.
 
-Milestash was called Award Wallet until version 0.14.0. Updating from Award Wallet keeps
+Milestash was called Award Wallet until version 0.14.0. Switching from Award Wallet keeps
 everything: your programs, logins, history and each site's memory of your computer move over by
-themselves.
+themselves (see **Updating**).
 
 ## Install on a Mac
 
@@ -193,11 +193,11 @@ On a Mac, the app replaces itself in your Applications folder. Opened from anywh
 .dmg, or Downloads), it shows **Move to Applications**, which puts it there and reopens it from
 there. Then eject the .dmg or delete the other copy, so you don't open an old one by mistake.
 
-Updating from Award Wallet, the app's old name, it reopens twice: the second time it's called
-Milestash in Applications, the Dock and Launchpad too. If Award Wallet can't find the update, it
-missed it before the repository was renamed: download the newest `.dmg` from **Releases**, drag
-**Milestash** onto **Applications** and drag **Award Wallet** to the Trash. Your data moves over
-either way.
+Award Wallet, the app's old name, can't update itself to Milestash: the repository was renamed
+too, and Award Wallet only installs downloads from the old name (its **Update now** says the
+release has no Mac app attached yet). So install Milestash by hand once: quit Award Wallet, follow
+**Download it** above, then drag **Award Wallet** to the Trash. The first time Milestash opens, it
+moves your data over by itself, and from then on **Update now** works as usual.
 
 If macOS says Milestash "was prevented from modifying apps on your Mac" while it updates, close
 the notice and leave Milestash switched off under **System Settings → Privacy & Security → App
@@ -344,11 +344,11 @@ Windows.
   both to one GitHub release, and the installed apps offer it. If either build fails, nothing is
   released until it's fixed or the run's **Re-run failed jobs** succeeds. Merging without a
   version bump releases nothing.
-- The repository was called `award-wallet`, like the app. Award Wallet 0.13 and older only
-  install updates from that address, so it was renamed once the installed app had updated to
-  Milestash; GitHub sends the old address to the new one. Keys named `AW_*` in `settings.env`
-  still work, and the installed app moves Award Wallet's data and itself to the new name
-  (`desktop.move_old_data`, `updates.start_rename`). `make app` uses the data where it is.
+- The repository was called `award-wallet`, like the app, and GitHub sends the old address to
+  the new one. Award Wallet 0.13 and older only install updates from the old address, so moving
+  to Milestash takes one install by hand (see **Updating**). Keys named `AW_*` in `settings.env`
+  still work, and the installed app moves Award Wallet's data to the new name the first time it
+  opens (`desktop.move_old_data`). `make app` uses the data where it is.
 - When pull requests build on each other, merge them in order with **Create a merge commit**.
   Squashing makes each later one conflict on the version number. Merged in a row, a version in
   between may get no release of its own, because a release run still waiting when a newer merge
