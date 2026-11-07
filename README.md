@@ -25,20 +25,22 @@ websites.
 
 ### macOS
 
-1. Open **Milestash.dmg** and drag **Milestash** onto **Applications**.
+1. Download **[Milestash.dmg](https://github.com/rafaelcgama/milestash/releases/latest/download/Milestash.dmg)**, open it and drag **Milestash** onto
+   **Applications**.
 2. Open Milestash from Applications. The first time only, macOS says it "could not verify"
    Milestash, because the app isn't signed with a paid Apple certificate: click **Done**, then go
    to **System Settings → Privacy & Security** and click **Open Anyway**.
 
-Or install it from Terminal in one step, without that warning:
+Or download it from Terminal, which also skips that warning, then drag **Milestash** onto
+**Applications**:
 
 ```sh
-[ -e /Applications/Milestash.app ] || { curl -fL -o /tmp/Milestash.dmg https://github.com/rafaelcgama/milestash/releases/latest/download/Milestash.dmg && hdiutil attach -quiet -nobrowse -mountpoint /tmp/Milestash /tmp/Milestash.dmg && ditto /tmp/Milestash/Milestash.app /Applications/Milestash.app; hdiutil detach -quiet /tmp/Milestash; }; open /Applications/Milestash.app
+curl -fL -o ~/Downloads/Milestash.dmg https://github.com/rafaelcgama/milestash/releases/latest/download/Milestash.dmg && open ~/Downloads/Milestash.dmg
 ```
 
 ### Windows
 
-1. Open **Milestash-Setup.exe**. The first time only, Windows says "Windows protected your PC",
+1. Download **[Milestash-Setup.exe](https://github.com/rafaelcgama/milestash/releases/latest/download/Milestash-Setup.exe)** and open it. The first time only, Windows says "Windows protected your PC",
    because Setup isn't signed with a paid certificate: click **More info**, then **Run anyway**.
 2. Click **Install**, then **Finish**. Milestash opens, and it's in the Start menu from then on.
 
