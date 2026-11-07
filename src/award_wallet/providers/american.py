@@ -36,6 +36,7 @@ class American(Provider):
     )
     # Under the balance the account summary says "Miles expire on Jan 3, 2028" (24 months after
     # the last activity). With an AAdvantage card it shows no date, and the policy above says why.
+    expires_on_text = "AAdvantage miles expire on {date} unless the account has some activity before then."
     keep_alive_hint = "Earn or spend any miles before then, and the date moves 24 months out."
     expiration_patterns = (
         r"miles\s+(?:will\s+)?expire\s+on\s+([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})",

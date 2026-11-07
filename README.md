@@ -97,9 +97,9 @@ If something goes wrong:
 - **History** keeps each change in your balance with its date, one entry a day at most, so you can
   see when points came in or went out.
 - **When miles expire:** American's balance page says when your miles expire, and the app reads
-  that date on each refresh. Three months before it, the program's card shows an alert saying what
-  to do: earn or spend any miles and the date moves 24 months out. The other programs' points
-  don't expire, and their cards say why.
+  that date on each refresh and shows it on the program's card. From 90 days before, that line
+  turns into an alert with a countdown and what to do: earn or spend any miles and the date moves
+  24 months out. The other programs' points don't expire, and their cards say why.
 - **Enter a balance by hand** on a program's page when you didn't save a login for it, or to add
   when points expire, which most sites don't show. You can add how many points expire and on what
   date (or just the date, if the whole balance expires then), and the program's card shows the

@@ -4,6 +4,16 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-07
+
+### Changed
+- An expiration more than three months away is a plain line on the card and the program's page,
+  in the same gray as the rest, like "AAdvantage miles expire on Jan 3, 2028 unless the account
+  has some activity before then". Only from 90 days before does it turn into the alert, with its
+  countdown.
+- The alert names what expires ("Miles expire on Feb 5, 2027 (in 90 days)") instead of "Balance
+  expires", and its countdown goes down at midnight even while the window stays open.
+
 ## [0.12.0] - 2026-11-07
 
 ### Added

@@ -91,6 +91,20 @@ def test_expiration_is_shown(client):
     assert "in 30 days" in dashboard
 
 
+def test_an_expiration_months_away_is_a_plain_line_without_an_alert(client):
+    account_id = link(client, "chase")
+    expires_on = date.today() + timedelta(days=200)
+    post_form(
+        client,
+        f"/accounts/{account_id}/balance",
+        {"balance": "80000", "expiring_amount": "5,000", "expires_on": expires_on.isoformat()},
+        token_from=f"/accounts/{account_id}",
+    )
+    for page in (client.get("/").text, client.get(f"/accounts/{account_id}").text):
+        assert "5,000 points expire on" in page
+        assert "expiry-alert" not in page and " days)" not in page
+
+
 def test_bad_balance_input_keeps_what_you_typed(client):
     account_id = link(client, "united")
     for data, message in (

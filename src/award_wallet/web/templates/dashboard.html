@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import expiration_text, expiry_alert, rewards_link, status_pill %}
+{% from "_macros.html" import expiry_alert, expiry_line, rewards_link, status_pill %}
 {% block head %}{% if busy %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
 {% block content %}
 {% if available_update %}
@@ -86,7 +86,7 @@
     {% if lot and s.expires_soon %}
     {{ expiry_alert(lot, s.latest.unit, s.provider.keep_alive_hint) }}
     {% elif lot %}
-    <div class="expiry expiry-upcoming">{{ expiration_text(lot, s.latest.unit) }}</div>
+    <div class="expiry">{{ expiry_line(lot, s.latest.unit, s.provider) }}</div>
     {% else %}
     <div class="expiry">{{ s.provider.expiration_policy }}</div>
     {% endif %}
