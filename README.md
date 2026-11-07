@@ -76,11 +76,12 @@ If something goes wrong:
   Chrome works invisibly, with no window, tab or Dock icon, and types the saved login one key at
   a time, like a person.
 - **Needs your sign-in** means a site wants something only you can give, like a code by text,
-  usually only the first time. Click **Sign in** on the program: the site's page shows right in
-  Award Wallet, with a note saying what the site wants. The app types your saved login; you click
-  and type on the page like in a browser to finish, like entering the code. It's the same hidden
-  Chrome that does the refreshes, so the site gets to know that browser, and from then on
-  refreshes run out of sight again. **Stop** ends the sign-in; nothing else opens, ever.
+  usually only the first time. Click **Sign in** on the program, even while others refresh: the
+  site's page shows right in Award Wallet, with a note saying what the site wants. The app types
+  your saved login; you click and type on the page like in a browser to finish, like entering the
+  code. It's the same hidden Chrome that does the refreshes, so the site gets to know that browser,
+  and from then on refreshes run out of sight again. **Stop** ends the sign-in; nothing else
+  opens, ever.
 - **Check your login** means the site turned down the saved username or password. Click
   **Sign in** and sign in yourself on the site's page, and the app keeps the login that works; or
   save it again. The app never retries a rejected login by itself, so your account doesn't get
@@ -89,6 +90,10 @@ If something goes wrong:
   least 1,000 fewer. That could be points you used, or some other number on the site's page, so it
   stays out of the history until you say: the program's page offers to keep the new balance or the
   one before. If you didn't use them, look at your account on the program's site.
+- **Fetch failed** means a refresh couldn't read the balance, and the program says why. If the
+  site couldn't be reached, the next refresh tries again. If the app couldn't find your points on
+  the site's page, the site may have changed it: a screenshot of the page goes into Diagnostics, so
+  the app can be fixed.
 - **History** keeps each change in your balance with its date, one entry a day at most, so you can
   see when points came in or went out.
 - **Enter a balance by hand** on a program's page when you didn't save a login for it, or to add
@@ -116,6 +121,11 @@ Opened from anywhere but Applications (the .dmg, or Downloads), the app shows **
 Applications**, which puts it there and reopens it from there. Then eject the .dmg or delete the
 other copy, so you don't open an old one by mistake. If an update ever goes wrong, `install.log`
 in Diagnostics says what happened.
+
+If macOS says Award Wallet "was prevented from modifying apps on your Mac" while it updates, close
+the notice and leave Award Wallet switched off under **System Settings → Privacy & Security → App
+Management**. The update installs anyway, and switching it on would let the app change or delete
+any app on your Mac.
 
 ## Your data
 
@@ -203,17 +213,24 @@ uv run alembic revision --autogenerate -m "describe the change"
 `tests/test_migrations.py` fails if `models.py` changes without a matching migration.
 
 The tests that sign in to a pretend bank and read balances off pages need a browser. CI installs
-Chromium for them; on your Mac they're skipped unless `AW_BROWSER_PATH` names a Chrome or Chromium
-to use.
+Chromium for them and sets `AW_REQUIRE_BROWSER`, so a missing browser fails the run instead of
+skipping them. On your Mac they're skipped unless `AW_BROWSER_PATH` names a Chrome or Chromium to
+use.
 
 ### Branches and releases
 
 - `main` is what the installed app updates from, so every change goes on its own branch with a
-  pull request. CI runs lint and tests on it.
+  pull request. CI runs lint and every test on it, the browser ones included, which takes about
+  10 minutes.
 - To try a branch before merging: `git fetch && git switch <branch> && make app`.
   `git switch main` goes back.
 - Each pull request bumps the version in `pyproject.toml` and `src/award_wallet/__init__.py`
-  (a test checks they match) and adds a `CHANGELOG.md` entry.
+  (a test checks they match), runs `uv lock` so `uv.lock` has the new version too (CI fails
+  otherwise), and adds a `CHANGELOG.md` entry.
 - Merging into `main` with a new version publishes it: the release workflow builds the .dmg on a
   Mac runner (a few minutes, under **Actions**) and attaches it to a GitHub release, and the
   installed app offers it. Merging without a version bump releases nothing.
+- When pull requests build on each other, merge them in order with **Create a merge commit**.
+  Squashing makes each later one conflict on the version number. Merged in a row, a version in
+  between may get no release of its own, because a release run still waiting when a newer merge
+  arrives is cancelled; the newest always gets one.
