@@ -115,7 +115,7 @@ def update_login(
         accounts.update_credentials(db, vault, account, credentials)
     except InvalidInput as exc:
         return _render_account(request, db, user, account, status_code=400, login_error=str(exc))
-    # A new password keeps Chrome's memory of this Mac; someone else's login starts fresh.
+    # A new password keeps Chrome's memory of this computer; someone else's login starts fresh.
     if any(
         before.get(field.name) != credentials.get(field.name)
         for field in provider.credential_fields

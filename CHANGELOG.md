@@ -4,6 +4,22 @@ Notable changes to Award Wallet. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-07
+
+### Added
+- A Windows version, for Windows 10 and 11. Each release has an `Award-Wallet-vX.Y.Z-Setup.exe`
+  that installs it for you alone, with no administrator password, adds it to the Start menu and
+  can be removed in Settings → Apps. It does everything the Mac app does: it signs in with your
+  Google Chrome out of sight, keeps your data in `%LOCALAPPDATA%\Award Wallet`, and updates itself
+  with **Update now**.
+- On Windows, a Help menu at the top of the window: About, Check for Updates and Show Diagnostics
+  in File Explorer. Opening the app while it's open shows the window that's already there.
+- The Windows build checks that the packed app starts and can start Chrome before it's released.
+
+### Changed
+- Releases carry the Mac .dmg and the Windows Setup.exe, and the app downloads the one for its
+  computer. Nothing changes on a Mac.
+
 ## [0.13.0] - 2026-11-07
 
 ### Added

@@ -4,14 +4,14 @@ Each program has its own Chrome profile in the app's data folder, used for every
 sees the same browser every time and remembers it the way your own Chrome is remembered: after
 the first sign-in it usually skips the security code.
 
-Chrome always runs in its hidden mode: no window, nothing in the Dock. A refresh types the saved
-login itself, a key at a time like a person, on whichever page the site shows it. When the site
-wants something only you can give, like a code texted to your phone, the refresh stops and the
-app says so; nothing pops up. When you click Sign in, the same hidden Chrome signs in and the app
-shows its page in Award Wallet's own window (see sign_in_view), where you finish what the site
-asks. Sites that tell a Chrome window from hidden Chrome then know the browser that refreshes,
-not a window it never uses. If the site turned the saved login down and you signed in with
-another, the app keeps the one that worked.
+Chrome always runs in its hidden mode: no window, nothing in the Dock or the taskbar. A refresh
+types the saved login itself, a key at a time like a person, on whichever page the site shows it.
+When the site wants something only you can give, like a code texted to your phone, the refresh
+stops and the app says so; nothing pops up. When you click Sign in, the same hidden Chrome signs
+in and the app shows its page in Award Wallet's own window (see sign_in_view), where you finish
+what the site asks. Sites that tell a Chrome window from hidden Chrome then know the browser that
+refreshes, not a window it never uses. If the site turned the saved login down and you signed in
+with another, the app keeps the one that worked.
 """
 
 import base64
@@ -23,7 +23,6 @@ import plistlib
 import random
 import re
 import secrets
-import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -32,6 +31,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from award_wallet import system, windows
 from award_wallet.providers import Expiration, Provider
 from award_wallet.sign_in_view import SignInView
 
@@ -309,8 +309,8 @@ class ChromeMissing(FetchProblem):
 
 def browser_launcher(profile: Path):
     """Opens Chrome with the program's own profile, in Chrome's hidden mode: no window and nothing
-    in the Dock. It's your installed Google Chrome, or AW_BROWSER_PATH in tests. Returns
-    Playwright and the browser context."""
+    in the Dock or the taskbar. It's your installed Google Chrome, or AW_BROWSER_PATH in tests.
+    Returns Playwright and the browser context."""
     from playwright.sync_api import Error, sync_playwright
 
     profile.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -328,7 +328,7 @@ def browser_launcher(profile: Path):
                 context.close()
                 options["user_agent"] = seen.replace("HeadlessChrome/", "Chrome/")
                 context = _launch(playwright, profile, options, Error)
-        _describe_this_mac(context, options.get("user_agent"))
+        _describe_this_computer(context, options.get("user_agent"))
     except BaseException:
         playwright.stop()
         raise
@@ -341,7 +341,8 @@ def _launch_options() -> dict[str, Any]:
     options: dict[str, Any] = {
         "headless": True,
         # Look like a normal Chrome, not one driven by a program, and keep the cookies encrypted
-        # with the Mac's Keychain like your own Chrome does (Playwright would use a fake one).
+        # with the Mac's Keychain like your own Chrome does (Playwright would use a fake one). On
+        # Windows, Chrome encrypts them for your Windows account either way.
         "ignore_default_args": ["--enable-automation", "--use-mock-keychain"],
         "args": args,
         # The page fills the window, like any Chrome window.
@@ -349,11 +350,12 @@ def _launch_options() -> dict[str, Any]:
         # Nothing a site offers for download is saved.
         "accept_downloads": False,
     }
-    # The same screen and browser a site sees in a window on this Mac.
-    if screen := mac_screen():
+    # The same screen and browser a site sees in a window on this computer.
+    if screen := this_screen():
         screen_width, screen_height, scale = screen
         width, height = min(width, screen_width), min(height, screen_height - 60)
-        args.append(f"--screen-info={{0,0 {screen_width * scale}x{screen_height * scale} devicePixelRatio={scale}}}")
+        pixels = f"{round(screen_width * scale)}x{round(screen_height * scale)}"
+        args.append(f"--screen-info={{0,0 {pixels} devicePixelRatio={scale:g}}}")
     args.append(f"--window-size={width},{height}")
     options["user_agent"] = chrome_user_agent()
     if path := os.environ.get("AW_BROWSER_PATH"):
@@ -385,29 +387,40 @@ def _user_agent(context) -> str:
 
 
 def chrome_user_agent() -> str | None:
-    """What Google Chrome on this Mac tells sites from a window, worked out from its version (Chrome
-    only gives sites the first number of it, like "Chrome/153.0.0.0"). None away from a Mac's
-    Google Chrome."""
-    if sys.platform != "darwin" or os.environ.get("AW_BROWSER_PATH"):
+    """What Google Chrome on this computer tells sites from a window, worked out from its version
+    (Chrome only gives sites the first number of it, like "Chrome/153.0.0.0"). None away from a
+    Mac's or a Windows PC's Google Chrome."""
+    if os.environ.get("AW_BROWSER_PATH"):
         return None
-    try:
-        with (CHROME_APP / "Contents" / "Info.plist").open("rb") as file:
-            version = str(plistlib.load(file).get("CFBundleShortVersionString", ""))
-    except (OSError, ValueError, plistlib.InvalidFileException):
+    if system.on_windows():
+        version = windows.chrome_version() or ""
+        # Every Windows Chrome says "Windows NT 10.0", Windows 11 too.
+        computer = "Windows NT 10.0; Win64; x64"
+    elif system.on_mac():
+        try:
+            with (CHROME_APP / "Contents" / "Info.plist").open("rb") as file:
+                version = str(plistlib.load(file).get("CFBundleShortVersionString", ""))
+        except (OSError, ValueError, plistlib.InvalidFileException):
+            return None
+        computer = "Macintosh; Intel Mac OS X 10_15_7"
+    else:
         return None
     major = version.split(".")[0]
     if not major.isdigit():
         return None
-    return (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
-        f"Chrome/{major}.0.0.0 Safari/537.36"
-    )
+    return f"Mozilla/5.0 ({computer}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
 
 
-def mac_screen() -> tuple[int, int, int] | None:
-    """The Mac's main screen: its width and height in points, and how many pixels make a point
-    (2 on a Retina screen). None elsewhere, or if macOS doesn't say."""
-    if sys.platform != "darwin":
+def this_screen() -> tuple[int, int, float] | None:
+    """This computer's main screen: its width and height in the units pages measure in, and how
+    many pixels make one (2 on a Retina screen, 1.5 with Windows' display scale at 150%). None
+    elsewhere, or if the computer doesn't say."""
+    if system.on_windows():
+        try:
+            return windows.screen()
+        except Exception:
+            return None
+    if not system.on_mac():
         return None
     try:
         import Quartz
@@ -423,15 +436,24 @@ def mac_screen() -> tuple[int, int, int] | None:
 
 
 def _client_hints() -> dict[str, Any] | None:
-    """The details about this Mac Chrome gives sites that ask (macOS version, Apple or Intel chip).
-    Playwright guesses them from the user agent, which says "Intel Mac OS X 10_15_7" on every Mac."""
-    if sys.platform != "darwin":
+    """The details about this computer Chrome gives sites that ask (the system's version, Apple,
+    Intel or AMD chip). Playwright guesses them from the user agent, which says "Intel Mac OS X
+    10_15_7" on every Mac and "Windows NT 10.0" on every PC, Windows 11 too."""
+    if system.on_windows():
+        name = "Windows"
+        version = windows.platform_version(windows.build_number())
+        arm = platform.machine().lower() in ("arm64", "aarch64")
+    elif system.on_mac():
+        name = "macOS"
+        numbers = (platform.mac_ver()[0].split(".") + ["0", "0"])[:3]
+        version = ".".join(number or "0" for number in numbers)
+        arm = platform.machine() == "arm64"
+    else:
         return None
-    numbers = (platform.mac_ver()[0].split(".") + ["0", "0"])[:3]
     return {
-        "platform": "macOS",
-        "platformVersion": ".".join(number or "0" for number in numbers),
-        "architecture": "arm" if platform.machine() == "arm64" else "x86",
+        "platform": name,
+        "platformVersion": version,
+        "architecture": "arm" if arm else "x86",
         "bitness": "64",
         "model": "",
         "mobile": False,
@@ -439,8 +461,9 @@ def _client_hints() -> dict[str, Any] | None:
     }
 
 
-def _describe_this_mac(context, user_agent: str | None) -> None:
-    """Give each page of the hidden Chrome the same details about this Mac that a window gives."""
+def _describe_this_computer(context, user_agent: str | None) -> None:
+    """Give each page of the hidden Chrome the same details about this computer that a window
+    gives."""
     hints = _client_hints()
     if not (hints and user_agent):
         return
@@ -453,7 +476,7 @@ def _describe_this_mac(context, user_agent: str | None) -> None:
             connection.send("Emulation.setUserAgentOverride", {"userAgent": user_agent, "userAgentMetadata": hints})
             kept.append(connection)
         except Exception as exc:
-            log.info("Couldn't give the page this Mac's details: %s", type(exc).__name__)
+            log.info("Couldn't give the page this computer's details: %s", type(exc).__name__)
 
     for page in context.pages:
         describe(page)

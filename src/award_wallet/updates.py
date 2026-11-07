@@ -9,11 +9,13 @@ import os
 import plistlib
 import re
 import shlex
+import shutil
 import ssl
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -24,11 +26,11 @@ from urllib.parse import unquote, urlsplit
 
 import certifi
 
-from award_wallet import __version__
+from award_wallet import __version__, system
 
 log = logging.getLogger(__name__)
 
-# Far more than the app's .dmg: a download that grows past this isn't the app.
+# Far more than the app's download: one that grows past this isn't the app.
 MAX_DOWNLOAD = 1024 * 1024 * 1024
 
 
@@ -40,10 +42,11 @@ class UpdateCheckFailed(Exception):
 class Release:
     version: str
     page_url: str
-    # The .dmg attached to the release, when there is one.
+    # This computer's download attached to the release, when there is one: the Mac's .dmg or the
+    # Windows Setup.exe.
     download_url: str | None
-    # The .dmg's SHA-256, which GitHub works out when the release is published. A download that
-    # doesn't match it is thrown away.
+    # Its SHA-256, which GitHub works out when the release is published. A download that doesn't
+    # match it is thrown away.
     download_sha256: str | None = None
 
 
@@ -93,11 +96,17 @@ def _on_github(url: object, repo: str, kind: str) -> bool:
     return all(segment not in ("", ".", "..") and not set(segment) & set("/\\") for segment in rest)
 
 
-def _dmg(data: dict, repo: str) -> tuple[str | None, str | None]:
-    """The release's .dmg, and its SHA-256 when GitHub lists one."""
+def download_ending() -> str:
+    """How this computer's download ends its name in a release: Award-Wallet-v1.2.3.dmg for a Mac,
+    Award-Wallet-v1.2.3-Setup.exe for Windows."""
+    return "-Setup.exe" if system.on_windows() else ".dmg"
+
+
+def _app_download(data: dict, repo: str) -> tuple[str | None, str | None]:
+    """The release's download for this computer, and its SHA-256 when GitHub lists one."""
     assets = data.get("assets")
     for asset in assets if isinstance(assets, list) else []:
-        if not isinstance(asset, dict) or not str(asset.get("name", "")).endswith(".dmg"):
+        if not isinstance(asset, dict) or not str(asset.get("name", "")).endswith(download_ending()):
             continue
         url = asset.get("browser_download_url")
         if not _on_github(url, repo, "download"):
@@ -133,7 +142,7 @@ def latest_release(repo: str, timeout: float = 10) -> Release:
     except (KeyError, TypeError, ValueError, AttributeError):
         raise UpdateCheckFailed("The latest release has no version number.") from None
     page_url = data.get("html_url")
-    download_url, download_sha256 = _dmg(data, repo)
+    download_url, download_sha256 = _app_download(data, repo)
     return Release(
         version=version.lstrip("v"),
         page_url=page_url if _on_github(page_url, repo, "tag") else "",
@@ -142,7 +151,7 @@ def latest_release(repo: str, timeout: float = 10) -> Release:
     )
 
 
-# Installing an update (the Mac app only) ------------------------------------------------------
+# Installing an update on a Mac -----------------------------------------------------------------
 
 # Runs after the app quits: puts the new app in place, keeping the old one until the copy is
 # complete, and reopens it. The new app comes from the downloaded .dmg, or, when moving the app
@@ -205,7 +214,7 @@ APPLICATIONS = (Path("/Applications"), Path.home() / "Applications")
 
 def running_app_bundle() -> Path | None:
     """The .app this code runs from, or None when it isn't a packaged Mac app."""
-    if sys.platform != "darwin" or not getattr(sys, "frozen", False):
+    if not system.on_mac() or not getattr(sys, "frozen", False):
         return None
     for parent in Path(sys.executable).resolve().parents:
         if parent.suffix == ".app":
@@ -313,10 +322,10 @@ def _installer_log() -> Path | None:
 
 def _run_installer(script_text: str, folder: Path) -> None:
     script = folder / "install.sh"
-    script.write_text(script_text)
+    script.write_text(script_text, encoding="utf-8")
     script.chmod(0o700)
     log_path = _installer_log() or folder / "install.log"
-    with log_path.open("a") as output:
+    with log_path.open("a", encoding="utf-8") as output:
         output.write(f"\n{datetime.now():%Y-%m-%d %H:%M:%S} Award Wallet {__version__} hands over to {script}\n")
         output.flush()
         subprocess.Popen(
@@ -326,6 +335,54 @@ def _run_installer(script_text: str, folder: Path) -> None:
             start_new_session=True,
             close_fds=True,
         )
+
+
+# Installing an update on Windows ---------------------------------------------------------------
+
+
+def installed_windows_app() -> Path | None:
+    """The folder of the Windows app this code runs from, or None when it isn't a packaged one."""
+    if not system.on_windows() or not getattr(sys, "frozen", False):
+        return None
+    return Path(sys.executable).resolve().parent
+
+
+def installed_app() -> Path | None:
+    """The packaged app this code runs from, which can update itself: the Mac's .app or the
+    Windows app's folder. None when running from the code, like in development."""
+    return running_app_bundle() or installed_windows_app()
+
+
+def setup_command(setup: Path, log_path: Path) -> list[str]:
+    """Runs the downloaded Setup with no window or questions. It waits for the app to quit, puts
+    the new version where the old one was and opens it (see packaging/windows/award_wallet.iss)."""
+    return [str(setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCANCEL", f"/LOG={log_path}"]
+
+
+def _run_setup(setup: Path) -> None:
+    # Setup's own log replaces the last one in Diagnostics, where an install that went wrong
+    # leaves its trace.
+    log_path = _installer_log() or setup.with_name("install.log")
+    log.info("Award Wallet %s hands over to %s", __version__, setup.name)
+    # On its own, so it carries on once the app has quit.
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    subprocess.Popen(setup_command(setup, log_path), creationflags=flags, close_fds=True)
+
+
+def remove_old_downloads(older_than: float = 3600) -> None:
+    """Delete updates an earlier launch downloaded: Windows' Setup can't delete itself, so its
+    folder stays behind once it's done."""
+    cutoff = time.time() - older_than
+    try:
+        folders = list(Path(tempfile.gettempdir()).glob("award-wallet-update-*"))
+    except OSError:
+        return
+    for folder in folders:
+        try:
+            if folder.is_dir() and folder.stat().st_mtime < cutoff:
+                shutil.rmtree(folder, ignore_errors=True)
+        except OSError:
+            continue
 
 
 def start_move(app: Path) -> Path:
@@ -392,20 +449,24 @@ class Updater:
     def _install(self, release: Release, app: Path, when_installing: Callable[[], None]) -> None:
         try:
             if not release.download_url:
-                raise UpdateCheckFailed("This release has no Mac app attached yet. Try again in a few minutes.")
+                computer = "Windows" if system.on_windows() else "Mac"
+                raise UpdateCheckFailed(f"This release has no {computer} app attached yet. Try again in a few minutes.")
             if not release.download_sha256:
                 # Without it, a changed file couldn't be told apart from the real one.
                 raise UpdateCheckFailed("GitHub hasn't listed this release's checksum yet. Try again in a few minutes.")
             folder = Path(tempfile.mkdtemp(prefix="award-wallet-update-"))
-            dmg = folder / "update.dmg"
+            downloaded = folder / ("Award-Wallet-Setup.exe" if system.on_windows() else "update.dmg")
             download(
                 release.download_url,
-                dmg,
+                downloaded,
                 sha256=release.download_sha256,
                 progress=lambda done, total: self._set(done=done, total=total),
             )
-            target = install_target(app)
-            _run_installer(installer_script(app=target, running=app, pid=os.getpid(), dmg=dmg), folder)
+            if system.on_windows():
+                _run_setup(downloaded)
+            else:
+                target = install_target(app)
+                _run_installer(installer_script(app=target, running=app, pid=os.getpid(), dmg=downloaded), folder)
         except UpdateCheckFailed as exc:
             self._set(state="failed", error=str(exc))
             return
